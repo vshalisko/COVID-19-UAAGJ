@@ -1,0 +1,669 @@
+---
+title: "Graficas COVID-19 por estado"
+author: "Viacheslav Shalisko"
+date: "26/4/2020"
+output:
+  html_document: 
+    self_contained: true
+---
+
+### Datos fuente
+datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Elaborado en colaboración con Luis Valdivia, Rocio Castillo y Eduardo Santana
+
+```{r echo=FALSE}
+library(tidyr)
+library(RColorBrewer)
+
+fecha <- "26 de abril del 2020"
+
+texto_fecha <- paste("Datos al ", fecha, sep = "")
+
+mi_texto <- "
+Elaborada por Viacheslav Shalisko
+en colaboración con Luis Valdivia, 
+Rocio Castillo y Eduardo Santana
+con los datos provenientes de 
+la Secretaría de Salud de Federación
+."
+```
+
+```{r echo=FALSE}
+knitr::asis_output(htmltools::htmlPreserve("
+<style>
+@media print
+{
+h1 {page-break-before:always}
+.legend {
+   visble:visible;
+   background:white !important;
+   -webkit-print-color-adjust: exact;
+   opacity: 1;
+  }
+}
+</style>
+"))
+```
+
+```{r echo=FALSE}
+
+casos_cumulativo <- read.csv("casos_por_estado_por_dia_cumulativo.csv")
+casos_eventos <- read.csv("casos_por_estado_por_dia_eventos.csv")
+defunciones_cumulativo <- read.csv("defunciones_por_estado_por_dia_cumulativo.csv")
+defunciones_eventos <- read.csv("defunciones_por_estado_por_dia_eventos.csv")
+pruebas_negativas_eventos <- read.csv("pruebas_negativas_por_estado_por_dia_eventos.csv")
+pruebas_negativas_cumulativo <- read.csv("pruebas_negativas_por_estado_por_dia_cumulativo.csv")
+pruebas_pendientes_eventos <- read.csv("pruebas_pendientes_por_estado_por_dia_eventos.csv")
+pruebas_pendientes_cumulativo <- read.csv("pruebas_pendientes_por_estado_por_dia_cumulativo.csv")
+
+poblacion_estados <- read.csv("../datos/Poblacion_01.csv", stringsAsFactors = FALSE)
+poblacion_estados$Poblacion <- as.numeric(poblacion_estados$Poblacion)
+
+casos_cumulativo <- casos_cumulativo[order(casos_cumulativo$ENTIDAD_FEDERATIVA),]
+
+resumen_por_estado <- casos_cumulativo[,c("estados","ENTIDAD_FEDERATIVA")]
+
+
+```
+
+
+```{r echo=FALSE}
+
+nombres_cols <- names(casos_cumulativo[,7:dim(casos_cumulativo)[2]])
+#nombres_cols
+casos_cumulativo_largo <- gather(casos_cumulativo, key = "fecha", value = "casos", nombres_cols)
+
+casos_cumulativo_largo$fecha <- as.Date(
+  substr(casos_cumulativo_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+
+# determinar fecha de primer caso por estado
+primer_caso_por_estado <- aggregate(fecha ~ estados, data = casos_cumulativo_largo[casos_cumulativo_largo$casos > 0,], min)
+names(primer_caso_por_estado) <- c("estados","fecha_primer_caso")
+
+# determinar fecha de primer caso por estado
+primer_caso20_por_estado <- aggregate(fecha ~ estados, data = casos_cumulativo_largo[casos_cumulativo_largo$casos >= 20,], min)
+names(primer_caso20_por_estado) <- c("estados","fecha_primer_caso20")
+
+#primer_caso_por_estado
+#primer_caso20_por_estado
+
+resumen_por_estado <- merge(x = resumen_por_estado, y = primer_caso_por_estado, 
+                                by = "estados", all.x = TRUE)
+resumen_por_estado <- merge(x = resumen_por_estado, y = primer_caso20_por_estado, 
+                                by = "estados", all.x = TRUE)
+casos_cumulativo_largo <- merge(x = casos_cumulativo_largo, y = primer_caso_por_estado,
+                                by = "estados", all.x = TRUE)
+casos_cumulativo_largo <- merge(x = casos_cumulativo_largo, y = primer_caso20_por_estado,
+                                by = "estados", all.x = TRUE)
+
+casos_cumulativo_largo$dias_de_primer_caso <- casos_cumulativo_largo$fecha - casos_cumulativo_largo$fecha_primer_caso
+casos_cumulativo_largo$dias_de_primer_caso20 <- casos_cumulativo_largo$fecha - casos_cumulativo_largo$fecha_primer_caso20
+
+```
+
+
+```{r echo=FALSE}
+nombres_cols_def <- names(defunciones_cumulativo[,7:dim(defunciones_cumulativo)[2]])
+defunciones_cumulativo_largo <- gather(defunciones_cumulativo, key = "fecha", value = "defunciones", nombres_cols_def)
+
+defunciones_cumulativo_largo$fecha <- as.Date(
+  substr(defunciones_cumulativo_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+
+#str(defunciones_cumulativo_largo)
+
+# determinar fecha de primer caso por estado
+primer_defuncion_por_estado <- aggregate(fecha ~ estados, data = defunciones_cumulativo_largo[defunciones_cumulativo_largo$defunciones > 0,], min)
+names(primer_defuncion_por_estado) <- c("estados","fecha_primer_defuncion")
+
+#primer_defuncion_por_estado
+
+resumen_por_estado <- merge(x = resumen_por_estado, y = primer_defuncion_por_estado, 
+                                by = "estados", all.x = TRUE)
+casos_cumulativo_largo <- merge(x = casos_cumulativo_largo, y = primer_defuncion_por_estado,
+                                by = "estados", all.x = TRUE)
+
+casos_cumulativo_largo$dias_de_primer_defuncion <- casos_cumulativo_largo$fecha - casos_cumulativo_largo$fecha_primer_defuncion
+
+```
+
+```{r echo=FALSE}
+resumen_por_estado <- merge(x = resumen_por_estado, y = poblacion_estados, 
+                                by.x = "estados", by.y = "ID", all.x = TRUE)
+
+casos_cumulativo_largo$casos_100k <- 100000 * casos_cumulativo_largo$casos / casos_cumulativo_largo$Poblacion
+```
+
+
+```{r echo=FALSE}
+
+nombres_cols_pruebas_negativas <- names(pruebas_negativas_cumulativo[,7:dim(pruebas_negativas_cumulativo)[2]])
+pruebas_negativas_cumulativo_largo <- gather(pruebas_negativas_cumulativo, key = "fecha", value = "pruebas_negativas", nombres_cols_pruebas_negativas)
+
+pruebas_negativas_cumulativo_largo$fecha <- as.Date(
+  substr(pruebas_negativas_cumulativo_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+
+total_pruebas_negativas <- aggregate(pruebas_negativas ~ estados, data = pruebas_negativas_cumulativo_largo[pruebas_negativas_cumulativo_largo$pruebas_negativas > 0,], max)
+names(total_pruebas_negativas) <- c("estados","pruebas_negativas")
+
+resumen_por_estado <- merge(x = resumen_por_estado, y = total_pruebas_negativas, 
+                                by = "estados", all.x = TRUE)
+
+casos_cumulativo_largo <- merge(x = casos_cumulativo_largo, y = pruebas_negativas_cumulativo_largo[,c("estados","fecha","pruebas_negativas")],
+                                by = c("estados","fecha"), all.x = TRUE)
+
+#str(pruebas_negativas_cumulativo_largo)
+
+```
+
+```{r echo=FALSE}
+nombres_cols_pruebas_pendientes <- names(pruebas_pendientes_eventos[,7:dim(pruebas_pendientes_cumulativo)[2]])
+pruebas_pendientes_cumulativo_largo <- gather(pruebas_pendientes_eventos, key = "fecha", value = "pruebas_pendientes", nombres_cols_pruebas_pendientes)
+
+pruebas_pendientes_cumulativo_largo$fecha <- as.Date(
+  substr(pruebas_pendientes_cumulativo_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+
+casos_cumulativo_largo <- merge(x = casos_cumulativo_largo, y = pruebas_pendientes_cumulativo_largo[,c("estados","fecha","pruebas_pendientes")],
+                                by = c("estados","fecha"), all.x = TRUE)
+
+casos_cumulativo_largo[is.na(casos_cumulativo_largo$pruebas_pendientes),"pruebas_pendientes"] <- 0
+
+#casos_cumulativo_largo
+
+#casos_cumulativo_largo$pruebas_negativas + casos_cumulativo_largo$casos + casos_cumulativo_largo$pruebas_pendientes
+
+casos_cumulativo_largo$pruebas_100k <- 100000 * (casos_cumulativo_largo$pruebas_negativas + casos_cumulativo_largo$casos + casos_cumulativo_largo$pruebas_pendientes) /
+                                         casos_cumulativo_largo$Poblacion
+casos_cumulativo_largo$pruebas_100k <- 100000 * (casos_cumulativo_largo$pruebas_negativas + casos_cumulativo_largo$casos) /
+                                         casos_cumulativo_largo$Poblacion 
+
+
+casos_cumulativo_largo$porcentaje_positivos <- 100 * casos_cumulativo_largo$casos / 
+                               (casos_cumulativo_largo$pruebas_negativas + casos_cumulativo_largo$casos)
+
+#str(casos_cumulativo_largo)
+```
+
+
+
+
+```{r echo=FALSE}
+options(width = 100)
+#resumen_por_estado
+
+estados_a_graficar <- c(2,3,5,9,11,14,15,19,21,25,23,27,30)
+
+resaltar <- function (est) {
+   sapply(est, function(estados) {
+     if (estados == 14) {
+    return(4)
+  } else {
+    return(2)
+  } })
+}
+
+miscolores <- function (est) {
+   mapa_de_colores <- data.frame(
+     id = 1:32,
+     ##           1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32  
+     color_br = c(0, 1, 2, 0, 3, 0, 0, 0, 4, 0, 5, 0, 0, 5, 6, 0, 0, 0, 7, 0, 8, 0,11, 0, 9, 0,10, 0, 0,12, 0, 0))
+   
+   sapply(est, function(estados) {
+     if (estados == 14) {
+        return("black")
+      } else if (estados == 23) {
+        return("gray")
+      } else {
+        color_id <- mapa_de_colores[mapa_de_colores$id == estados,"color_br"]
+        return(brewer.pal(n = 12, name = 'Paired')[color_id])
+    } })
+}
+
+
+
+casos_cumulativo_seleccion <- casos_cumulativo[casos_cumulativo$estados 
+                             %in% estados_a_graficar,]
+casos_cumulativo_largo <- casos_cumulativo_largo[casos_cumulativo_largo$estados 
+                             %in% estados_a_graficar,]
+
+ #casos_cumulativo_seleccion <- casos_cumulativo[  casos_cumulativo$estados >= 16,]
+casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA <- as.factor(as.character(casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA))
+casos_cumulativo_largo$ENTIDAD_FEDERATIVA <- as.factor(as.character(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))
+
+#levels(casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA)
+#levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA)
+
+casos_cumulativo_largo <- casos_cumulativo_largo[order(casos_cumulativo_largo$estados, casos_cumulativo_largo$fecha),]
+
+#unique(casos_cumulativo_largo$estados)
+
+```
+
+
+# Graficas desde primer caso
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+plot(casos ~ dias_de_primer_caso, data = casos_cumulativo_largo,
+     xlim = c(0,58), pch = 19, cex = 0.5,
+     col = miscolores(casos_cumulativo_largo$estados),
+     xlab = "Días desde primer caso", ylab = "Total de casos confirmados")
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo[casos_cumulativo_largo$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso, my_cc$casos, 
+  col = miscolores(my_cc$estados[1]),
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ )
+
+ 
+ text(x = 0, y = 1400, labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 0, y = 1000, labels = texto_fecha, adj = 0, cex = 1.2)
+ 
+```
+
+# Graficas desde primer caso LN
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+plot(log(casos) ~ dias_de_primer_caso, data = casos_cumulativo_largo,
+     xlim = c(0,58), pch = 19, cex = 0.5, yaxt = "n",
+     col = miscolores(casos_cumulativo_largo$estados),
+     xlab = "Días desde primer caso", ylab = "Total de casos confirmados")
+axis(2, at = log(c(1,2,5,10,20,50,100,200,500,1000,2000)), labels = c(1,2,5,10,20,50,100,200,500,"1k","2k"))
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo[casos_cumulativo_largo$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso, log(my_cc$casos),
+  col = miscolores(my_cc$estados[1]),
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ )
+
+ #x_line <-    c(1,4,7,10,13,16,19,22, 25, 28, 31, 34, 37, 40)
+ #y_line <- log(c(1,2,4, 8,16,32,64,128,256,512,1024,2048,4096,8192))
+ #lines(x = x_line, y = y_line, col = "red", lwd = 1, lty = 2)
+ 
+ lines(x = seq(0,50,1), y = log(2) * 0.5 * seq(0,50,1), col = "black", lwd = 1, lty = 2)
+ text(x = 24, y = log(3000), labels = "dupl. c. 2 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,50,1), y = log(2) * 0.25 * seq(0,50,1), col = "black", lwd = 1, lty = 2)
+ text(x = 38, y = log(3000), labels = "dupl. c. 4 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,70,1), y = log(2) * 0.143 * seq(0,70,1), col = "black", lwd = 1, lty = 2)
+ text(x = 42, y = log(50), labels = "dupl. c. 7 dias", adj = 0, cex = 0.8)
+ 
+ text(x = 35, y = log(2), labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 35, y = log(5), labels = texto_fecha, adj = 0, cex = 1.2)
+
+```
+
+# Graficas desde primer caso por 100k habitantes
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+plot(casos_100k ~ dias_de_primer_caso, data = casos_cumulativo_largo,
+     xlim = c(0,58), pch = 19, cex = 0.5,
+     #groups = casos_cumulativo_largo$estados, 
+     col = miscolores(casos_cumulativo_largo$estados),
+     #col = brewer.pal(n = 12, name = 'Paired')[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     #col = terrain.colors(32)[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     xlab = "Días desde primer caso", ylab = "Casos confirmados por 100k habitantes")
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo[casos_cumulativo_largo$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso, my_cc$casos_100k, 
+  col = miscolores(my_cc$estados[1]),
+  #col = brewer.pal(n = 12, name = 'Paired')[i],
+  #col = terrain.colors(32)[i],
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ #col =  brewer.pal(n = 12, name = 'Paired')[1:12]
+ #col = terrain.colors(32)[1:32]
+ )
+
+ 
+ text(x = 0, y = 20, labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 0, y = 15, labels = texto_fecha, adj = 0, cex = 1.2)
+
+```
+
+# Graficas desde primer caso por 100k habitantes LN
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE} 
+
+plot(log(casos_100k) ~ dias_de_primer_caso, data = casos_cumulativo_largo,
+     xlim = c(0,58), ylim = c(-5,6), pch = 19, cex = 0.5, yaxt = "n",
+     col = miscolores(casos_cumulativo_largo$estados),
+     #col = brewer.pal(n = 12, name = 'Paired')[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     xlab = "Días desde primer caso", ylab = "Casos confirmados por 100k habitantes")
+axis(2, at = log(c(0.01,0.05,0.1,0.2,0.5,1,2,5,10,20,50)), labels = c(0.01,0.05,0.1,0.2,0.5,1,2,5,10,20,50))
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo[casos_cumulativo_largo$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso, log(my_cc$casos_100k), 
+  col = miscolores(my_cc$estados[1]),
+  #col = brewer.pal(n = 12, name = 'Paired')[i],
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ #col =  brewer.pal(n = 12, name = 'Paired')[1:12]
+ )
+
+ lines(x = seq(0,50,1), y = -5 + log(2) * 0.5 * seq(0,50,1), col = "black", lwd = 1, lty = 2)
+ text(x = 23, y = log(280), labels = "dupl. c. 2 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,70,1), y = -5 + log(2) * 0.25 * seq(0,70,1), col = "black", lwd = 1, lty = 2)
+ text(x = 52, y = log(280), labels = "dupl. c. 4 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,70,1), y = -5 + log(2) * 0.147 * seq(0,70,1), col = "black", lwd = 1, lty = 2)
+ text(x = 52, y = log(0.8), labels = "dupl. c. 7 dias", adj = 0, cex = 0.8)
+
+ 
+ text(x = 38, y = log(0.02), labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 38, y = log(0.09), labels = texto_fecha, adj = 0, cex = 1.2)
+
+```
+
+# Graficas desde caso 20
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+casos_cumulativo_largo_recorte <- casos_cumulativo_largo[casos_cumulativo_largo$dias_de_primer_caso20 >= 0,] 
+
+
+plot(casos ~ dias_de_primer_caso20, data = casos_cumulativo_largo_recorte,
+     xlim = c(-1,40), pch = 19, cex = 0.5,
+     col = miscolores(casos_cumulativo_largo_recorte$estados),
+     #col = brewer.pal(n = 12, name = 'Paired')[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     #col = terrain.colors(32)[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     xlab = "Días desde caso 20", ylab = "Total de casos confirmados")
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo_recorte[casos_cumulativo_largo_recorte$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo_recorte$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso20, my_cc$casos,
+  col = miscolores(my_cc$estados[1]),
+  #col = brewer.pal(n = 12, name = 'Paired')[i],
+  #col = terrain.colors(32)[i],
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ #col =  brewer.pal(n = 12, name = 'Paired')[1:12]
+ #col = terrain.colors(32)[1:32],
+ )
+
+ text(x = 0, y = 2000, labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 0, y = 1600, labels = texto_fecha, adj = 0, cex = 1.2) 
+
+```
+
+# Graficas desde caso 20 LN
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE} 
+
+plot(log(casos) ~ dias_de_primer_caso20, data = casos_cumulativo_largo_recorte,
+     xlim = c(-2,40), pch = 19, cex = 0.5, yaxt = "n",
+     col = miscolores(casos_cumulativo_largo_recorte$estados),
+     #col = brewer.pal(n = 12, name = 'Paired')[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     #col = terrain.colors(32)[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     xlab = "Días desde caso 20", ylab = "Total de casos confirmados")
+axis(2, at = log(c(1,2,5,10,20,50,100,200,500,1000,2000)), labels = c(1,2,5,10,20,50,100,200,500,"1k","2k"))
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo_recorte[casos_cumulativo_largo_recorte$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo_recorte$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso20, log(my_cc$casos), 
+  col = miscolores(my_cc$estados[1]),
+  #col = brewer.pal(n = 12, name = 'Paired')[i],
+  #col = terrain.colors(32)[i],
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ #col =  brewer.pal(n = 12, name = 'Paired')[1:12]
+ #col = terrain.colors(32)[1:32],
+ )
+
+ lines(x = seq(0,30,1), y = log(20) + log(2) * 0.5 * seq(0,30,1), col = "black", lwd = 1, lty = 2)
+ text(x = 9, y = log(3000), labels = "dupl. c. 2 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,50,1), y = log(20) + log (2) * 0.25 * seq(0,50,1), col = "black", lwd = 1, lty = 2)
+ text(x = 24, y = log(3000), labels = "dupl. c. 4 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,50,1), y = log(20) + log(2) * 0.147 * seq(0,50,1), col = "black", lwd = 1, lty = 2)
+ text(x = 37, y = log(700), labels = "dupl. c. 7 dias", adj = 0, cex = 0.8)
+
+ text(x = 25, y = log(50), labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 25, y = log(25), labels = texto_fecha, adj = 0, cex = 1.2)
+
+```
+
+# Graficas desde caso 20 por 100k habitantes
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+
+plot(casos_100k ~ dias_de_primer_caso20, data = casos_cumulativo_largo_recorte,
+     xlim = c(-2,40), ylim =c(0, 42), pch = 19, cex = 0.5,
+     col = miscolores(casos_cumulativo_largo_recorte$estados),
+     #col = brewer.pal(n = 12, name = 'Paired')[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     #col = terrain.colors(32)[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     xlab = "Días desde caso 20", ylab = "Casos confirmados por 100k habitantes")
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo_recorte[casos_cumulativo_largo_recorte$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo_recorte$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso20, my_cc$casos_100k, 
+  col = miscolores(my_cc$estados[1]),
+  #col = brewer.pal(n = 12, name = 'Paired')[i],
+  #col = terrain.colors(32)[i],
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ #col =  brewer.pal(n = 12, name = 'Paired')[1:12]
+ #col = terrain.colors(32)[1:32],
+ )
+
+ text(x = -3, y = 23, labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = -3, y = 18, labels = texto_fecha, adj = 0, cex = 1.2)
+```
+
+# Graficas desde caso 20 por 100k habitantes LN
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+plot(log(casos_100k) ~ dias_de_primer_caso20, data = casos_cumulativo_largo_recorte,
+     xlim = c(-2,40), ylim = c(-2, 6), pch = 19, cex = 0.5, yaxt = "n",
+     col = miscolores(casos_cumulativo_largo_recorte$estados),
+     #col = brewer.pal(n = 12, name = 'Paired')[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     #col = terrain.colors(32)[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     xlab = "Días desde caso 20", ylab = "Casos confirmados por 100k habitantes")
+axis(2, at = log(c(0.05,0.1,0.2,0.5,1,2,5,10,20,50)), labels = c(0.05,0.1,0.2,0.5,1,2,5,10,20,50))
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo_recorte[casos_cumulativo_largo_recorte$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo_recorte$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso20, log(my_cc$casos_100k), 
+  col = miscolores(my_cc$estados[1]),
+  #col = brewer.pal(n = 12, name = 'Paired')[i],
+  #col = terrain.colors(32)[i],
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ #col =  brewer.pal(n = 12, name = 'Paired')[1:12]
+ #col = terrain.colors(32)[1:32],
+ )
+
+ lines(x = seq(0,40,1), y = -2 + log(2) * 0.5 * seq(0,40,1), col = "black", lwd = 1, lty = 2)
+ text(x = 17, y = log(350), labels = "dupl. c. 2 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,50,1), y = -2 + log(2) * 0.25 * seq(0,50,1), col = "black", lwd = 1, lty = 2)
+ text(x = 37, y = log(200), labels = "dupl. c. 4 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,50,1), y = -2 + log(2) * 0.147 * seq(0,50,1), col = "black", lwd = 1, lty = 2)
+ text(x = 37, y = log(10), labels = "dupl. c. 7 dias", adj = 0, cex = 0.8)
+
+ text(x = 25, y = -1, labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 25, y = -2, labels = texto_fecha, adj = 0, cex = 1.2)
+
+```
+
+
+# Graficas desde primera defuncion
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+
+plot(casos ~ dias_de_primer_defuncion, data = casos_cumulativo_largo,
+     xlim = c(-2,39), pch = 19, cex = 0.5,
+     col = miscolores(casos_cumulativo_largo$estados),
+     #col = brewer.pal(n = 12, name = 'Paired')[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     #col = terrain.colors(32)[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     xlab = "Días desde primera defunción", ylab = "Total de casos confirmados")
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo[casos_cumulativo_largo$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_defuncion, my_cc$casos, 
+  col = miscolores(my_cc$estados[1]),
+  #col = brewer.pal(n = 12, name = 'Paired')[i],
+  #col = terrain.colors(32)[i],
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ #col =  brewer.pal(n = 12, name = 'Paired')[1:12]
+ #col = terrain.colors(32)[1:32],
+ )
+
+ text(x = -1, y = 2000, labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = -1, y = 1600, labels = texto_fecha, adj = 0, cex = 1.2)
+```
+
+# Graficas desde primera defuncion LN
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+
+plot(log(casos) ~ dias_de_primer_defuncion, data = casos_cumulativo_largo,
+     xlim = c(-2,39), ylim = c(1,10), pch = 19, cex = 0.5, yaxt = "n",
+     col = miscolores(casos_cumulativo_largo$estados),
+     #col = brewer.pal(n = 12, name = 'Paired')[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     #col = terrain.colors(32)[casos_cumulativo_largo$ENTIDAD_FEDERATIVA],
+     xlab = "Días desde primera defunción", ylab = "Total de casos confirmados")
+axis(2, at = log(c(5,10,20,50,100,200,500,1000,2000)), labels = c(5,10,20,50,100,200,500,"1k","2k"))
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo[casos_cumulativo_largo$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_defuncion, log(my_cc$casos), 
+  col = miscolores(my_cc$estados[1]),
+  #col = brewer.pal(n = 12, name = 'Paired')[i],
+  #col = terrain.colors(32)[i],
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ #col =  brewer.pal(n = 12, name = 'Paired')[1:12]
+ #col = terrain.colors(32)[1:32],
+ )
+
+ lines(x = seq(0,30,1), y = log(20) + log(2) * 0.5 * seq(0,30,1), col = "black", lwd = 1, lty = 2)
+ text(x = 15, y = log(20000), labels = "dupl. c. 2 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,50,1), y = log(20) + log(2) * 0.25 * seq(0,50,1), col = "black", lwd = 1, lty = 2)
+ text(x = 35, y = log(20000), labels = "dupl. c. 5 dias", adj = 0, cex = 0.8)
+ lines(x = seq(0,50,1), y = log(20) + log(2) * 0.147 * seq(0,50,1), col = "black", lwd = 1, lty = 2)
+ text(x = 35, y = log(600), labels = "dupl. c. 10 dias", adj = 0, cex = 0.8)
+
+ text(x = 25, y = log(8), labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 25, y = log(3), labels = texto_fecha, adj = 0, cex = 1.2) 
+
+```
+
+# Graficas pruebas con resultado por 100k habitantes desde primer caso
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+
+plot(pruebas_100k ~ dias_de_primer_caso, data = casos_cumulativo_largo,
+     xlim = c(-25,55), ylim = c(0,170), pch = 19, cex = 0.5,
+     col = miscolores(casos_cumulativo_largo$estados),
+     xlab = "Días desde primer caso", ylab = "Total de pruebas con resultado por 100k habitantes")
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo[casos_cumulativo_largo$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso, my_cc$pruebas_100k,
+  col = miscolores(my_cc$estados[1]),
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ )
+
+ text(x = 10, y = 160, labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 10, y = 140, labels = texto_fecha, adj = 0, cex = 1.2)
+
+```
+
+# Graficas porcentaje de pruebas positivas desde primer caso
+
+```{r fig.width = 10, fig.height = 8, echo=FALSE}
+
+
+plot(porcentaje_positivos ~ dias_de_primer_caso, data = casos_cumulativo_largo,
+     xlim = c(0,55), ylim = c(0,50), pch = 19, cex = 0.5,
+     col = miscolores(casos_cumulativo_largo$estados),
+     xlab = "Días desde primer caso", ylab = "Proporción de pruebas con resultado positivo, %")
+
+for (i in 1:length(levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA))) {
+  my_cc <- casos_cumulativo_largo[casos_cumulativo_largo$ENTIDAD_FEDERATIVA == levels(casos_cumulativo_largo$ENTIDAD_FEDERATIVA)[i],]
+  lines(my_cc$dias_de_primer_caso, my_cc$porcentaje_positivos,
+  col = miscolores(my_cc$estados[1]),
+  lwd = resaltar(my_cc$estados[1]))
+}
+
+legend("topleft", horiz = FALSE, bty = "n",
+ lty = 1, cex = 0.8, lwd = resaltar(casos_cumulativo_seleccion$estado),
+ legend = casos_cumulativo_seleccion$ENTIDAD_FEDERATIVA,
+ col = miscolores(casos_cumulativo_seleccion$estado)
+ )
+
+ text(x = 0, y = 28, labels = mi_texto, adj = 0, cex = 0.8)
+ text(x = 0, y = 22, labels = texto_fecha, adj = 0, cex = 1.2)
+
+```

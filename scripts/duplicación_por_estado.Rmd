@@ -1,0 +1,534 @@
+---
+title: "Tablas de duplicación de COVID-19 por estado"
+author: "Viacheslav Shalisko"
+date: "26/4/2020"
+output:
+  html_document: 
+    self_contained: true
+---
+
+### Datos fuente
+datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Elaborado en colaboración con Luis Valdivia, Rocio Castillo y Eduardo Santana
+
+```{r echo=FALSE, message = FALSE}
+library(tidyr)
+library(RColorBrewer)
+library(maptools)
+
+fecha <- "26 de abril del 2020"
+fecha_hoy <- "2020-04-26"
+fecha_hace_dos_semanas <- "2020-04-12"
+fecha_hace_mes <- "2020-03-27"
+
+estados_a_graficar <- c(2,3,5,9,11,14,15,19,21,25,23,27,30)
+
+mi_texto <- "
+Elaborada por Viacheslav Shalisko
+en colaboración con Luis Valdivia, 
+Rocio Castillo y Eduardo Santana
+con los datos provenientes de 
+la Secretaría de Salud de Federación
+."
+```
+
+```{r echo=FALSE}
+knitr::asis_output(htmltools::htmlPreserve("
+<style>
+@media print
+{
+h1 {page-break-before:always}
+.legend {
+   visble:visible;
+   background:white !important;
+   -webkit-print-color-adjust: exact;
+   opacity: 1;
+  }
+}
+</style>
+"))
+```
+
+```{r echo=FALSE}
+
+casos_cumulativo <- read.csv("casos_por_estado_por_dia_cumulativo.csv")
+casos_eventos <- read.csv("casos_por_estado_por_dia_eventos.csv")
+defunciones_cumulativo <- read.csv("defunciones_por_estado_por_dia_cumulativo.csv")
+defunciones_eventos <- read.csv("defunciones_por_estado_por_dia_eventos.csv")
+pruebas_negativas_eventos <- read.csv("pruebas_negativas_por_estado_por_dia_eventos.csv")
+pruebas_negativas_cumulativo <- read.csv("pruebas_negativas_por_estado_por_dia_cumulativo.csv")
+
+poblacion_estados <- read.csv("../datos/Poblacion_01.csv", stringsAsFactors = FALSE)
+
+poblacion_estados$Poblacion <- as.numeric(poblacion_estados$Poblacion)
+
+casos_cumulativo <- casos_cumulativo[order(casos_cumulativo$ENTIDAD_FEDERATIVA),]
+
+resumen_por_estado <- casos_cumulativo[,c("estados","ENTIDAD_FEDERATIVA")]
+
+
+```
+
+```{r  echo=FALSE}
+## transformar casos a formato largo
+
+nombres_cols <- names(casos_cumulativo[,7:dim(casos_cumulativo)[2]])
+#nombres_cols
+casos_cumulativo_largo <- gather(casos_cumulativo, key = "fecha", value = "casos", nombres_cols)
+
+casos_cumulativo_largo$fecha <- as.Date(
+  substr(casos_cumulativo_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+```
+
+
+```{r echo=FALSE}
+
+# determinar fecha de primer caso por estado
+primer_caso_por_estado <- aggregate(fecha ~ estados, data = casos_cumulativo_largo[casos_cumulativo_largo$casos > 0,], min)
+names(primer_caso_por_estado) <- c("estados","fecha_primer_caso")
+
+# determinar fecha de caso 20 por estado
+primer_caso20_por_estado <- aggregate(fecha ~ estados, data = casos_cumulativo_largo[casos_cumulativo_largo$casos >= 5,], min)
+names(primer_caso20_por_estado) <- c("estados","fecha_primer_caso20")
+
+#primer_caso_por_estado
+#primer_caso20_por_estado
+
+resumen_por_estado <- merge(x = resumen_por_estado, y = primer_caso_por_estado, 
+                                by = "estados", all.x = TRUE)
+resumen_por_estado <- merge(x = resumen_por_estado, y = primer_caso20_por_estado, 
+                                by = "estados", all.x = TRUE)
+casos_cumulativo_largo <- merge(x = casos_cumulativo_largo, y = primer_caso_por_estado,
+                                by = "estados", all.x = TRUE)
+casos_cumulativo_largo <- merge(x = casos_cumulativo_largo, y = primer_caso20_por_estado,
+                                by = "estados", all.x = TRUE)
+
+resumen_por_estado$fecha_dia_14 <- resumen_por_estado$fecha_primer_caso + 14
+
+casos_cumulativo_largo$dias_de_primer_caso <- as.numeric(casos_cumulativo_largo$fecha - casos_cumulativo_largo$fecha_primer_caso)
+casos_cumulativo_largo$dias_de_primer_caso20 <- as.numeric(casos_cumulativo_largo$fecha - casos_cumulativo_largo$fecha_primer_caso20)
+
+```
+
+
+```{r echo=FALSE}
+
+nombres_cols_def <- names(defunciones_cumulativo[,7:dim(defunciones_cumulativo)[2]])
+defunciones_cumulativo_largo <- gather(defunciones_cumulativo, key = "fecha", value = "defunciones", nombres_cols_def)
+
+defunciones_cumulativo_largo$fecha <- as.Date(
+  substr(defunciones_cumulativo_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+
+#str(defunciones_cumulativo_largo)
+
+# determinar fecha de primera defuncion por estado
+primer_defuncion_por_estado <- aggregate(fecha ~ estados, data = defunciones_cumulativo_largo[defunciones_cumulativo_largo$defunciones > 0,], min)
+names(primer_defuncion_por_estado) <- c("estados","fecha_primer_defuncion")
+
+#primer_defuncion_por_estado
+
+resumen_por_estado <- merge(x = resumen_por_estado, y = primer_defuncion_por_estado, 
+                                by = "estados", all.x = TRUE)
+casos_cumulativo_largo <- merge(x = casos_cumulativo_largo, y = primer_defuncion_por_estado,
+                                by = "estados", all.x = TRUE)
+
+casos_cumulativo_largo$dias_de_primer_defuncion <- casos_cumulativo_largo$fecha - casos_cumulativo_largo$fecha_primer_defuncion
+
+```
+
+
+
+```{r echo=FALSE}
+
+
+resumen_por_estado <- merge(x = resumen_por_estado, y = poblacion_estados, 
+                                by.x = "estados", by.y = "ID", all.x = TRUE)
+
+casos_cumulativo_largo$casos_100k <- 100000 * casos_cumulativo_largo$casos / casos_cumulativo_largo$Poblacion
+```
+
+## Estimación de tiempos de duplicación
+
+```{r echo = FALSE}
+
+## determinar  numero de casos en la fecha hace dos semanas
+casos_hace_dos_semanas <- aggregate(casos ~ estados, data = casos_cumulativo_largo[casos_cumulativo_largo$fecha == as.Date(fecha_hace_dos_semanas),], max)
+names(casos_hace_dos_semanas) <- c("estados","casos_hace_dos_semanas")
+resumen_por_estado <- merge(x = resumen_por_estado, y = casos_hace_dos_semanas, 
+                                by = "estados", all.x = TRUE)
+
+# determinar número de casos hace un mes
+casos_hace_mes <- aggregate(casos ~ estados, data = casos_cumulativo_largo[casos_cumulativo_largo$fecha == as.Date(fecha_hace_mes),], max)
+names(casos_hace_mes) <- c("estados","casos_hace_mes")
+resumen_por_estado <- merge(x = resumen_por_estado, y = casos_hace_mes, 
+                                by = "estados", all.x = TRUE)
+
+# determinar númereo máximo de casos (se asume que el numero máximo cumulativo de casos es actual)
+casos_hoy <- aggregate(casos ~ estados, data = casos_cumulativo_largo[casos_cumulativo_largo$casos > 0,], max)
+names(casos_hoy) <- c("estados","casos_hoy")
+resumen_por_estado <- merge(x = resumen_por_estado, y = casos_hoy, 
+                                by = "estados", all.x = TRUE)
+
+# determinar número de casos en el dia 14 desde primer caso
+casos_dia14 <- casos_cumulativo_largo[casos_cumulativo_largo$dias_de_primer_caso == 14, c("estados","casos")]
+names(casos_dia14) <- c("estados","casos_dia14")
+resumen_por_estado <- merge(x = resumen_por_estado, y = casos_dia14, 
+                                by = "estados", all.x = TRUE)
+
+# determinar número de casos el dia de 20 casos
+casos_primer_caso20 <- casos_cumulativo_largo[casos_cumulativo_largo$dias_de_primer_caso20 == 0, c("estados","casos")]
+names(casos_primer_caso20) <- c("estados","casos_primer_caso20")
+resumen_por_estado <- merge(x = resumen_por_estado, y = casos_primer_caso20, 
+                                by = "estados", all.x = TRUE)
+
+# determinar número de casos en el dia 14 desde 20 casos
+casos_dia14_primer_caso20 <- casos_cumulativo_largo[casos_cumulativo_largo$dias_de_primer_caso20 == 14, c("estados","casos")]
+names(casos_dia14_primer_caso20) <- c("estados","casos_dia14_primer_caso20")
+resumen_por_estado <- merge(x = resumen_por_estado, y = casos_dia14_primer_caso20, 
+                                by = "estados", all.x = TRUE)
+
+```
+
+```{r echo = FALSE}
+
+
+resumen_por_estado$dias_desde_primer_caso <- as.numeric(as.Date(fecha_hoy) - resumen_por_estado$fecha_primer_caso)
+resumen_por_estado$dias_desde_caso20 <- as.numeric(as.Date(fecha_hoy) - resumen_por_estado$fecha_primer_caso20)
+
+
+## formula incorrecta
+# resumen_por_estado$pendiente_total <- (log(resumen_por_estado$casos_hoy) - 1) / as.numeric(resumen_por_estado$dias_desde_primer_caso)
+# resumen_por_estado$pendiente_dia14 <- (log(resumen_por_estado$casos_dia14) - 1) / 14
+# resumen_por_estado$pendiente_total_caso20 <- (log(resumen_por_estado$casos_hoy) - log(resumen_por_estado$casos_primer_caso20)) / as.numeric(resumen_por_estado$dias_desde_caso20)
+# resumen_por_estado$pendiente_dia14_caso20 <- (log(resumen_por_estado$casos_dia14_primer_caso20) - log(resumen_por_estado$casos_primer_caso20)) / 14
+# resumen_por_estado$pendiente_ultimas_dos_semanas <- (log(resumen_por_estado$casos_hoy) - log(resumen_por_estado$casos_hace_dos_semanas)) / 14
+# resumen_por_estado$pendiente_ultimo_mes <- (log(resumen_por_estado$casos_hoy) - log(resumen_por_estado$casos_hace_mes)) / 30
+# resumen_por_estado$pendiente_previas_dos_semanas <- (log(resumen_por_estado$casos_hace_dos_semanas) - log(resumen_por_estado$casos_hace_mes)) / 16
+
+
+## formula ok
+resumen_por_estado$duplicacion_total <- (as.numeric(resumen_por_estado$dias_desde_primer_caso)) * log(2) / 
+                                            ((log(resumen_por_estado$casos_hoy) - log(1)))
+resumen_por_estado$duplicacion_dia14 <- 14 * log(2) / 
+                                            ((log(resumen_por_estado$casos_dia14) - log(1)))
+resumen_por_estado$duplicacion_total_caso20 <- (as.numeric(resumen_por_estado$dias_desde_caso20)) * log(2) / 
+                                            ((log(resumen_por_estado$casos_hoy) - log(resumen_por_estado$casos_primer_caso20)))
+resumen_por_estado$duplicacion_dia14_caso20 <- 14 * log(2) / 
+                                            ((log(resumen_por_estado$casos_dia14_primer_caso20) - log(resumen_por_estado$casos_primer_caso20)))
+resumen_por_estado$duplicacion_ultimas_dos_semanas <- 14 * log(2) / 
+                                            ((log(resumen_por_estado$casos_hoy) - log(resumen_por_estado$casos_hace_dos_semanas)))
+resumen_por_estado$duplicacion_ultimo_mes <- 30 * log(2) / 
+                                            ((log(resumen_por_estado$casos_hoy) - log(resumen_por_estado$casos_hace_mes)))
+resumen_por_estado$duplicacion_previas_dos_semanas <- 16 * log(2) / 
+                                            ((log(resumen_por_estado$casos_hace_dos_semanas) - log(resumen_por_estado$casos_hace_mes)))
+
+resumen_por_estado$casos_nuevos_dos_semanas <- resumen_por_estado$casos_hoy - resumen_por_estado$casos_hace_dos_semanas
+
+```
+
+
+
+```{r echo=FALSE}
+
+nombres_cols_pruebas_negativas <- names(pruebas_negativas_cumulativo[,7:dim(pruebas_negativas_cumulativo)[2]])
+pruebas_negativas_cumulativo_largo <- gather(pruebas_negativas_cumulativo, key = "fecha", value = "pruebas_negativas", nombres_cols_pruebas_negativas)
+
+pruebas_negativas_cumulativo_largo$fecha <- as.Date(
+  substr(pruebas_negativas_cumulativo_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+
+## determinar  numero de casos en la fecha hace dos semanas
+total_pruebas_negativas <- aggregate(pruebas_negativas ~ estados, 
+                                     data = pruebas_negativas_cumulativo_largo[pruebas_negativas_cumulativo_largo$pruebas_negativas > 0,], max)
+names(total_pruebas_negativas) <- c("estados","pruebas_negativas")
+resumen_por_estado <- merge(x = resumen_por_estado, y = total_pruebas_negativas, 
+                                by = "estados", all.x = TRUE)
+
+## determinar  numero de pruebas negativas en la fecha hace dos semanas
+pruebas_negativas_hace_dos_semanas <- aggregate(pruebas_negativas ~ estados, 
+                                      data = pruebas_negativas_cumulativo_largo[pruebas_negativas_cumulativo_largo$fecha == as.Date(fecha_hace_dos_semanas),], max)
+names(pruebas_negativas_hace_dos_semanas) <- c("estados","pruebas_negativas_hace_dos_semanas")
+resumen_por_estado <- merge(x = resumen_por_estado, y = pruebas_negativas_hace_dos_semanas, 
+                                by = "estados", all.x = TRUE)
+
+
+#str(pruebas_negativas_cumulativo_largo)
+
+# determinar fecha de primera defuncion por estado
+# primer_defuncion_por_estado <- aggregate(fecha ~ estados, data = defunciones_cumulativo_largo[defunciones_cumulativo_largo$defunciones > 0,], min)
+# names(primer_defuncion_por_estado) <- c("estados","fecha_primer_defuncion")
+
+#primer_defuncion_por_estado
+
+#resumen_por_estado <- merge(x = resumen_por_estado, y = primer_defuncion_por_estado, 
+#                                by = "estados", all.x = TRUE)
+#casos_cumulativo_largo <- merge(x = casos_cumulativo_largo, y = primer_defuncion_por_estado,
+#                                by = "estados", all.x = TRUE)
+#
+#casos_cumulativo_largo$dias_de_primer_defuncion <- casos_cumulativo_largo$fecha - casos_cumulativo_largo$fecha_primer_defuncion
+
+resumen_por_estado$pruebas_hoy <- resumen_por_estado$pruebas_negativas + resumen_por_estado$casos_hoy
+resumen_por_estado$pruebas_hace_dos_semanas <- resumen_por_estado$pruebas_negativas_hace_dos_semanas + resumen_por_estado$casos_hace_dos_semanas
+
+resumen_por_estado$pruebas_nuevas_dos_semanas <- resumen_por_estado$pruebas_hoy - resumen_por_estado$pruebas_hace_dos_semanas
+
+resumen_por_estado$casos_hoy_100k <- 100000 * resumen_por_estado$casos_hoy / resumen_por_estado$Poblacion
+resumen_por_estado$pruebas_hoy_100k <- 100000 * resumen_por_estado$pruebas_hoy / resumen_por_estado$Poblacion
+resumen_por_estado$casos_nuevos_dos_semanas_100k <- 100000 * resumen_por_estado$casos_nuevos_dos_semanas / resumen_por_estado$Poblacion
+resumen_por_estado$pruebas_nuevas_dos_semanas_100k <- 100000 * resumen_por_estado$pruebas_nuevas_dos_semanas / resumen_por_estado$Poblacion
+
+```
+
+
+
+```{r echo = FALSE}
+#resumen_por_estado[,c("estados","ENTIDAD_FEDERATIVA","pendiente_total","duplicacion_total","pendiente_30","duplicacion_30")]
+
+resumen_por_estado <- resumen_por_estado[order(resumen_por_estado$duplicacion_ultimas_dos_semanas, decreasing = FALSE),]
+
+library(knitr)
+  kable(resumen_por_estado[,c("estados","ENTIDAD_FEDERATIVA",
+                              "duplicacion_dia14",
+                              "duplicacion_dia14_caso20",
+                              "duplicacion_ultimas_dos_semanas",
+                              "duplicacion_previas_dos_semanas",
+                              "duplicacion_ultimo_mes",
+                              "duplicacion_total"
+                              )],
+      caption = paste("Tabla. Tiempos de duplicación por estado para ",fecha),
+      align = 'c', digits = round(3), row.names = FALSE,
+      col.names = c("ID","Estado",
+                    "Tiempo de duplicación primeras dos semanas (días)",
+                    "Tiempo de duplicación primeras dos semanas desde 5 casos (días)",
+                    "Tiempo de duplicación últimas dos semanas (días)",
+                    "Tiempo de duplicación previas dos semanas (días)",
+                    "Tiempo de duplicación último mes (días)",
+                    "Tiempo de duplicación general (días)"
+                    )
+      )
+```
+
+
+```{r echo = FALSE}
+
+resumen_por_estado_seleccion <- resumen_por_estado[resumen_por_estado$estados  %in% estados_a_graficar,]
+
+resumen_por_estado_seleccion <- resumen_por_estado_seleccion[order(resumen_por_estado_seleccion$ENTIDAD_FEDERATIVA, decreasing = FALSE),]
+
+library(knitr)
+  kable(resumen_por_estado_seleccion[,c("estados","ENTIDAD_FEDERATIVA",
+                              "duplicacion_dia14",
+                              "duplicacion_dia14_caso20",
+                              "duplicacion_ultimas_dos_semanas",
+                              "duplicacion_previas_dos_semanas",
+                              "duplicacion_ultimo_mes",
+                              "duplicacion_total"
+                              )],
+      caption = paste("Tabla. Tiempos de duplicación en estados selectos para ",fecha),
+      align = 'c', digits = round(3), row.names = FALSE,
+      col.names = c("ID","Estado",
+                    "Tiempo de duplicación primeras dos semanas (días)",
+                    "Tiempo de duplicación primeras dos semanas desde 5 casos (días)",
+                    "Tiempo de duplicación últimas dos semanas (días)",
+                    "Tiempo de duplicación previas dos semanas (días)",
+                    "Tiempo de duplicación último mes (días)",
+                    "Tiempo de duplicación general (días)"
+                    )
+      )
+```
+
+# Comparación de tiempos de duplicación en primeras dos semanas y en últimas dos semanas
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+barplot(t(as.matrix(resumen_por_estado_seleccion[,c("duplicacion_dia14","duplicacion_ultimas_dos_semanas")])), 
+        beside = TRUE, ylim = c(0, 20), las = 2, col = c("lightblue","coral"),
+        ylab = "tiempo de duplicación (dias)",
+        names.arg = resumen_por_estado_seleccion$ENTIDAD_FEDERATIVA
+        #legend.text = c("primeras dos semanas","últimas dos semanas")
+        )
+legend("topleft",legend = c("primeras dos semanas","últimas dos semanas"),
+       fill = c("lightblue","coral"),
+       bty = "n")
+
+```
+
+
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+barplot(t(as.matrix(resumen_por_estado_seleccion[,c("duplicacion_dia14_caso20","duplicacion_ultimas_dos_semanas")])), 
+        beside = TRUE, ylim = c(0, 20), las = 2, col = c("lightblue","coral"),
+        ylab = "tiempo de duplicación (dias)",
+        names.arg = resumen_por_estado_seleccion$ENTIDAD_FEDERATIVA
+        #legend.text = c("primeras dos semanas desde caso 5","últimas dos semanas")
+        )
+legend("topleft",legend = c("primeras dos semanas desde caso 5","últimas dos semanas"),
+       fill = c("lightblue","coral"),
+       bty = "n")
+
+```
+
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+resumen_por_estado_seleccion$cambio_duplicacion <- resumen_por_estado_seleccion$duplicacion_ultimas_dos_semanas -
+                                                    resumen_por_estado_seleccion$duplicacion_dia14_caso20
+
+resumen_por_estado_seleccion <- resumen_por_estado_seleccion[order(resumen_por_estado_seleccion$cambio_duplicacion, decreasing = TRUE),]
+
+barplot(resumen_por_estado_seleccion$cambio_duplicacion, 
+        beside = TRUE, ylim = c(0, 15), las = 2, col = c("lightblue"),
+        ylab = "aumento de tiempo de duplicación (dias)",
+        names.arg = resumen_por_estado_seleccion$ENTIDAD_FEDERATIVA
+        #legend.text = c("primeras dos semanas","últimas dos semanas")
+        )
+
+
+```
+
+# Relación entre número total de casos confirmados y numero total de pruebas con resultado por estados de México
+
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+#str(resumen_por_estado)
+ 
+
+ y <- resumen_por_estado$casos_hoy_100k
+ x <- resumen_por_estado$pruebas_hoy_100k
+ plot(x, y,
+      col = "blue", pch = 1, cex = 1.5, xlim = c(0,140), ylim = c(0, 43),
+      xlab = "No. de pruebas por 100k habitantes", ylab = "No. de casos confirmados por 100k habitantes",
+      )
+ m1 <- lm(y ~ x)
+ x_visualizacion <- seq(10, 140, 1)
+ prediction_m1 <- predict(m1, data.frame(x = x_visualizacion), se.fit = TRUE)
+ #str(prediction_m1)
+ lines(x_visualizacion, prediction_m1$fit, col = "red")
+ lines(x_visualizacion, prediction_m1$fit - 1.96 * prediction_m1$se.fit, col = "red", lty = 2)
+ lines(x_visualizacion, prediction_m1$fit + 1.96 * prediction_m1$se.fit, col = "red", lty = 2)
+ 
+ points(resumen_por_estado_seleccion$pruebas_hoy_100k, resumen_por_estado_seleccion$casos_hoy_100k, 
+        col = "blue", pch = 19)
+ 
+ pointLabel(x = resumen_por_estado_seleccion$pruebas_hoy_100k,
+            y = resumen_por_estado_seleccion$casos_hoy_100k, 
+            labels = paste(resumen_por_estado_seleccion$Estado),
+            allowSmallOverlap = FALSE, method = "SANN",
+            cex =0.9)
+ 
+# text(x = resumen_por_estado_seleccion$pruebas_hoy_100k,
+#        y = resumen_por_estado_seleccion$casos_hoy_100k,
+#        pos = 3, adj = 0.5, cex = 0.8,
+#        labels = resumen_por_estado_seleccion$Estado)
+ 
+ 
+ summary(m1)
+ #plot(m1)
+ print("Correlación de Pearson")
+ cor.test(resumen_por_estado$pruebas_hoy_100k, resumen_por_estado$casos_hoy_100k, method = "pearson")
+ print("Correlación de Spearman")
+ cor.test(resumen_por_estado$pruebas_hoy_100k, resumen_por_estado$casos_hoy_100k, method = "spearman")
+ 
+```
+
+# Núemro total de pruebas con resultado por estado
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+
+
+
+resumen_por_estado_seleccion <- resumen_por_estado[resumen_por_estado$estados 
+                             %in% estados_a_graficar,]
+resumen_por_estado_seleccion <- resumen_por_estado_seleccion[order(resumen_por_estado_seleccion$pruebas_hoy_100k, decreasing = TRUE),]
+
+#resumen_por_estado_seleccion
+
+par(mar = c(18, 4, 4, 2))
+npen_barplot1 <- barplot(height = resumen_por_estado_seleccion$pruebas_hoy_100k,
+        names.arg = resumen_por_estado_seleccion$ENTIDAD_FEDERATIVA, col = "gray",
+        ylab = "Pruebas con resultado por 100k  habitantes",
+        las = 2, ylim = c(0, max(resumen_por_estado_seleccion$pruebas_hoy_100k) + 20),
+        main = paste("Pruebas con resultado por 100k habitantes por estado para ", fecha))
+
+text(x = npen_barplot1, y = resumen_por_estado_seleccion$pruebas_hoy_100k + 10, 
+     labels = round(resumen_por_estado_seleccion$pruebas_hoy_100k,0), cex = 0.7)
+```
+
+
+# Relación entre número de casos confirmados y numero de pruebas con resultado por estados de México durante últimas dos semanas
+
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+#str(resumen_por_estado)
+ 
+
+ y <- resumen_por_estado$casos_nuevos_dos_semanas_100k
+ x <- resumen_por_estado$pruebas_nuevas_dos_semanas_100k
+ 
+ plot(x, y,
+      col = "blue", pch = 1, cex = 1.5, xlim = c(0,80), ylim = c(0, 35),
+      xlab = "No. de pruebas por 100k habitantes", ylab = "No. de casos confirmados por 100k habitantes",
+      )
+ m1 <- lm(y ~ x)
+ x_visualizacion <- seq(0, 80, 1)
+ prediction_m1 <- predict(m1, data.frame(x = x_visualizacion), se.fit = TRUE)
+ #str(prediction_m1)
+ lines(x_visualizacion, prediction_m1$fit, col = "red")
+ lines(x_visualizacion, prediction_m1$fit - 1.96 * prediction_m1$se.fit, col = "red", lty = 2)
+ lines(x_visualizacion, prediction_m1$fit + 1.96 * prediction_m1$se.fit, col = "red", lty = 2)
+ 
+ points(resumen_por_estado_seleccion$pruebas_nuevas_dos_semanas_100k, resumen_por_estado_seleccion$casos_nuevos_dos_semanas_100k, 
+        col = "blue", pch = 19)
+ 
+ pointLabel(x = resumen_por_estado_seleccion$pruebas_nuevas_dos_semanas_100k,
+            y = resumen_por_estado_seleccion$casos_nuevos_dos_semanas_100k, 
+            labels = paste(resumen_por_estado_seleccion$Estado),
+            allowSmallOverlap = FALSE, method = "SANN",
+            cex =0.9)
+ 
+# text(x = resumen_por_estado_seleccion$pruebas_hoy_100k,
+#        y = resumen_por_estado_seleccion$casos_hoy_100k,
+#        pos = 3, adj = 0.5, cex = 0.8,
+#        labels = resumen_por_estado_seleccion$Estado)
+ 
+ 
+ summary(m1)
+ #plot(m1)
+ print("Correlación de Pearson")
+ cor.test(resumen_por_estado$pruebas_nuevas_dos_semanas_100k, resumen_por_estado$casos_nuevos_dos_semanas_100k, method = "pearson")
+ print("Correlación de Spearman")
+ cor.test(resumen_por_estado$pruebas_nuevas_dos_semanas_100k, resumen_por_estado$casos_nuevos_dos_semanas_100k, method = "spearman")
+ 
+```
+
+# Núemro de pruebas con resultado por estado durante últimas dos semanas
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+
+
+
+resumen_por_estado_seleccion <- resumen_por_estado[resumen_por_estado$estados 
+                             %in% estados_a_graficar,]
+resumen_por_estado_seleccion <- resumen_por_estado_seleccion[order(resumen_por_estado_seleccion$pruebas_nuevas_dos_semanas_100k, decreasing = TRUE),]
+
+#resumen_por_estado_seleccion
+
+par(mar = c(18, 4, 4, 2))
+npen_barplot1 <- barplot(height = resumen_por_estado_seleccion$pruebas_nuevas_dos_semanas_100k,
+        names.arg = resumen_por_estado_seleccion$ENTIDAD_FEDERATIVA, col = "gray",
+        ylab = "Pruebas con resultado por 100k habitantes",
+        las = 2, ylim = c(0, max(resumen_por_estado_seleccion$pruebas_nuevas_dos_semanas_100k) + 20),
+        main = paste("Pruebas con resultado por 100k habitantes en la últimas dos semanas para ", fecha))
+
+text(x = npen_barplot1, y = resumen_por_estado_seleccion$pruebas_nuevas_dos_semanas_100k + 10, 
+     labels = round(resumen_por_estado_seleccion$pruebas_nuevas_dos_semanas_100k,0), cex = 0.7)
+```
+
+
