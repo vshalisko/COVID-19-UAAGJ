@@ -1,0 +1,1336 @@
+---
+title: "Tratamiento datos COVID-19 México 01/05/2020"
+author: "Viacheslav Shalisko en colaboración con E. Santana, R. Castillo-Aja, L. Valdivia-Orneals"
+date: "1/5/2020"
+output:
+  html_document: 
+    self_contained: true
+---
+
+#### Versión 5
+
+### Datos fuente
+datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+```{r echo = FALSE}
+fecha <- "1 de mayo del 2020"
+fecha_formato <- "2020-05-01"
+
+datos <- read.csv("200501COVID19MEXICO.csv")
+datos_ayer <- read.csv("200430COVID19MEXICO.csv")
+datos_hace14 <- read.csv("200417COVID19MEXICO.csv")
+
+
+datos$FECHA_INGRESO <- as.POSIXct(datos$FECHA_INGRESO)
+datos$FECHA_SINTOMAS <- as.POSIXct(datos$FECHA_SINTOMAS)
+
+## clasificador de semanas por fecha de sintomas
+semanas <- seq.Date(from = as.Date("2019-12-29"), to = as.Date(fecha_formato),
+             by = 7)
+datos$semana <- findInterval(as.Date(datos$FECHA_SINTOMAS), semanas)
+
+
+#str(datos)
+#dim(datos)
+#dim(datos_ayer)
+#dim(datos_hace14)
+
+## tablas para el dia de hoy
+datos_positivos <- datos[datos$RESULTADO == 1,]
+#dim(datos_positivos)
+datos_negativos <- datos[datos$RESULTADO == 2,]
+#dim(datos_negativos)
+datos_pendientes <- datos[datos$RESULTADO == 3,]
+#dim(datos_pendientes)
+datos_positivos_hospitalizados <- datos[datos$RESULTADO == 1 & datos$TIPO_PACIENTE == 2,]
+#dim(datos_positivos_hospitalizados)
+datos_positivos_uci <- datos[datos$RESULTADO == 1 & datos$UCI == 1,]
+#dim(datos_positivos_UCI)
+datos_defunciones <- datos[datos$RESULTADO == 1 & datos$FECHA_DEF != '9999-99-99',]
+#dim(datos_defunciones)
+
+## datos para el dia de ayer
+datos_positivos_ayer <- datos_ayer[datos_ayer$RESULTADO == 1,]
+#dim(datos_positivos_ayer)
+datos_negativos_ayer <- datos_ayer[datos_ayer$RESULTADO == 2,]
+#dim(datos_positivos_ayer)
+datos_pendientes_ayer <- datos_ayer[datos_ayer$RESULTADO == 3,]
+#dim(datos_pendientes_ayer)
+datos_positivos_hospitalizados_ayer <- datos_ayer[datos_ayer$RESULTADO == 1 & datos_ayer$TIPO_PACIENTE == 2,]
+#dim(datos_positivos_hospitalizados_ayer)
+datos_positivos_uci_ayer <- datos_ayer[datos_ayer$RESULTADO == 1 & datos_ayer$UCI == 1,]
+#dim(datos_positivos_UCI_ayer)
+datos_defunciones_ayer <- datos_ayer[datos_ayer$RESULTADO == 1 & datos_ayer$FECHA_DEF != '9999-99-99',]
+#dim(datos_defunciones_ayer)
+
+## datos para hace 14 dias
+datos_positivos_hace14 <- datos_hace14[datos_hace14$RESULTADO == 1,]
+#dim(datos_positivos_hace14)
+datos_negativos_hace14 <- datos_hace14[datos_hace14$RESULTADO == 2,]
+#dim(datos_positivos_hace14)
+datos_pendientes_hace14 <- datos_hace14[datos_hace14$RESULTADO == 3,]
+#dim(datos_pendientes_hace14)
+datos_positivos_hospitalizados_hace14 <- datos_hace14[datos_hace14$RESULTADO == 1 & datos_hace14$TIPO_PACIENTE == 2,]
+#dim(datos_positivos_hospitalizados_hace14)
+datos_positivos_uci_hace14 <- datos_hace14[datos_hace14$RESULTADO == 1 & datos_hace14$UCI == 1,]
+#dim(datos_positivos_UCI_hace14)
+datos_defunciones_hace14 <- datos_hace14[datos_hace14$RESULTADO == 1 & datos_hace14$FECHA_DEF != '',]
+#dim(datos_defunciones_hace14)
+
+
+```
+
+```{r echo=FALSE}
+knitr::asis_output(htmltools::htmlPreserve("
+<style>
+@media print
+{
+h1 {page-break-before:always}
+.legend {
+   visble:visible;
+   background:white !important;
+   -webkit-print-color-adjust: exact;
+   opacity: 1;
+  }
+}
+</style>
+"))
+```
+
+
+### Fuentes auxiliares
+Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> y Catálogo Único de Claves de Áreas Geoestadísticas Estatales, Municipales y Localidades de INEGI <https://www.inegi.org.mx/app/ageeml/>
+
+```{r echo = FALSE}
+estados <- read.csv("Catalogos_0412_ENTIDADES.csv")
+#str(estados)
+poblacion_estados <- read.csv("Poblacion_01.csv", stringsAsFactors = FALSE)
+poblacion_estados$Poblacion <- as.numeric(poblacion_estados$Poblacion)
+#str(poblacion_estados)
+municipios <- read.csv("Catalogos_0412_MUNICIPIOS.csv", stringsAsFactors = FALSE)
+#str(municipios)
+municipios2 <- read.csv("catalogo_municipios.csv", stringsAsFactors = FALSE)
+#str(municipios2)
+```
+
+## Total de casos positivos confirmados
+
+```{r echo = FALSE}
+casos_por_estado <- as.data.frame(table(datos_positivos$ENTIDAD_RES))
+colnames(casos_por_estado) <- c("estados","casos")
+
+casos_por_estado_ayer <- as.data.frame(table(datos_positivos_ayer$ENTIDAD_RES))
+colnames(casos_por_estado_ayer) <- c("estados","casos_ayer")
+
+casos_por_estado_hace14 <- as.data.frame(table(datos_positivos_hace14$ENTIDAD_RES))
+colnames(casos_por_estado_hace14) <- c("estados","casos_hace14")
+
+# primeras columnas con datos generales de detados, importante contar con CLAVE_ENTIDAD en primera posición
+cpen <- merge(x = estados, y = poblacion_estados, by.x = "CLAVE_ENTIDAD", by.y = "ID")
+cpen <- merge(x = cpen, y = casos_por_estado, by.x = "CLAVE_ENTIDAD", by.y = "estados")
+colnames(cpen)[1] <- c("estados")
+
+
+## variable cpen - casos por estado con nombres
+cpen <- merge(x = cpen, y = casos_por_estado_ayer, by = "estados", all.x = TRUE)
+cpen <- merge(x = cpen, y = casos_por_estado_hace14, by = "estados", all.x = TRUE)
+
+
+cpen$casos_por_100k <- 100000 * cpen$casos / cpen$Poblacion
+cpen$casos_por_100k_ayer <- 100000 * cpen$casos_ayer / cpen$Poblacion
+cpen$casos_por_100k_hace14 <- 100000 * cpen$casos_hace14 / cpen$Poblacion
+
+cpen$aumento_casos <- cpen$casos - cpen$casos_ayer
+cpen$aumento_casos_hace14 <- cpen$casos - cpen$casos_hace14
+
+cpen <- cpen[order(cpen$ENTIDAD_FEDERATIVA),]
+
+#str(cpen)
+
+total_casos <- sum(cpen$casos)
+total_casos_ayer <- sum(cpen$casos_ayer)
+total_casos_hace14 <- sum(cpen$casos_hace14)
+aumento_casos <- total_casos - total_casos_ayer
+aumento_casos_porcentaje <- round(100 * aumento_casos / total_casos,1)
+aumento_casos_hace14 <- total_casos - total_casos_hace14
+aumento_casos_porcentaje_hace14 <- round(100 * aumento_casos_hace14 / total_casos,1)
+```
+
+### Total de casos registrados para `r fecha`: `r total_casos`. 
+### Aumento desde ayer: `r aumento_casos` (`r aumento_casos_porcentaje`%). 
+### Aumento en últimas dos semanas `r aumento_casos_hace14` (`r aumento_casos_porcentaje_hace14`%).
+
+## Resumen de registros positivos confirmados por estado
+
+```{r echo = FALSE}
+
+options(width = 100)
+
+library(knitr)
+kable(cpen[,c("estados","ENTIDAD_FEDERATIVA",
+              "casos","casos_por_100k","casos_ayer","casos_hace14",
+              "aumento_casos", "aumento_casos_hace14")],
+      caption = paste("Tabla. Casos confirmados por estado para",fecha),
+      align = 'c', digits = round(1), row.names = FALSE,
+      col.names = c("ID","Estado",
+                    "Cumulativo de casos confirmados",
+                    "Casos por 100k habitantes",
+                    "Casos para ayer",
+                    "Casos hace dos semanas",
+                    "Aumento de casos desde ayer", 
+                    "Aumento de casos en últimas dos semanas"
+                    )
+      )
+
+```
+
+# Histogramas de registros positivos por estado, aumento desde ayer
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+cpen_ymax <- 1.1 * max(cpen$casos)
+
+cpen_barplot <- barplot(height = cpen$casos, 
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        main = paste("Total casos por estado para ", fecha, " y aumento desde ayer"))
+
+barplot(height = cpen$casos_ayer, col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = cpen$casos + 0.05 * cpen_ymax, labels = cpen$casos, cex = 0.8)
+text(x = cpen_barplot, y = cpen$casos + 0.02 * cpen_ymax, labels = paste("+", cpen$aumento_casos), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos para ayer", "aumento"),
+      fill = c("gray","red"))
+```
+
+# Histogramas de registros positivos por estado, aumento en últimas dos semanas
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+cpen_ymax <- 1.1 * max(cpen$casos)
+
+cpen_barplot <- barplot(height = cpen$casos, 
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "coral",
+        las = 2, ylim = c(0, cpen_ymax),
+        main = paste("Total casos por estado para ", fecha, " y aumento en dos semanas"))
+
+barplot(height = cpen$casos_hace14, col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = cpen$casos + 0.05 * cpen_ymax, labels = cpen$casos, cex = 0.8)
+text(x = cpen_barplot, y = cpen$casos + 0.02 * cpen_ymax, labels = paste("+", cpen$aumento_casos_hace14), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos hace dos semanas", "aumento"),
+      fill = c("gray","coral"))
+```
+
+# Histogramas de registros positivos por estado normalizados a 100 mil habitantes
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+cpen <- cpen[order(cpen$casos_por_100k, decreasing = TRUE),]
+
+cpen_100k_ymax <- 1.1 * max(cpen$casos_por_100k)
+
+cpen_barplot1 <- barplot(height = cpen$casos_por_100k,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "gray",
+        ylab = "Casos por 100 k habitantes",
+        las = 2, ylim = c(0, cpen_100k_ymax),
+        main = paste("Casos confirmados por 100k habitantes por estado para ", fecha))
+text(x = cpen_barplot1, y = cpen$casos_por_100k + 0.03 * cpen_100k_ymax, labels = round(cpen$casos_por_100k,1), cex = 0.7)
+
+cpen <- cpen[order(cpen$ENTIDAD_FEDERATIVA),]
+```
+
+
+# Total de defunciones
+
+```{r echo = FALSE}
+defunciones_por_estado <- as.data.frame(table(datos_defunciones$ENTIDAD_RES))
+colnames(defunciones_por_estado) <- c("estados","defunciones")
+
+defunciones_por_estado_ayer <- as.data.frame(table(datos_defunciones_ayer$ENTIDAD_RES))
+colnames(defunciones_por_estado_ayer) <- c("estados","defunciones_ayer")
+
+defunciones_por_estado_hace14 <- as.data.frame(table(datos_defunciones_hace14$ENTIDAD_RES))
+colnames(defunciones_por_estado_hace14) <- c("estados","defunciones_hace14")
+
+## variable dpen - defunciones por estado con nombres
+cpen <- merge(x = cpen, y = defunciones_por_estado, by = "estados", all.x = TRUE)
+cpen <- merge(x = cpen, y = defunciones_por_estado_ayer, by = "estados", all.x = TRUE)
+cpen <- merge(x = cpen, y = defunciones_por_estado_hace14, by = "estados", all.x = TRUE)
+
+cpen$defunciones_por_100k <- 100000 * cpen$defunciones / cpen$Poblacion
+cpen$defunciones_por_100k_ayer <- 100000 * cpen$defunciones_ayer / cpen$Poblacion
+cpen$defunciones_por_100k_hace14 <- 100000 * cpen$defunciones_hace14 / cpen$Poblacion
+
+cpen$aumento_defunciones <- cpen$defunciones - cpen$defunciones_ayer
+cpen$aumento_defunciones_hace14 <- cpen$defunciones - cpen$defunciones_hace14
+
+cpen$proporcion_defunciones <- cpen$defunciones / cpen$casos
+
+cpen <- cpen[order(cpen$ENTIDAD_FEDERATIVA),]
+
+total_defunciones <- sum(cpen$defunciones)
+total_defunciones_ayer <- sum(cpen$defunciones_ayer)
+total_defunciones_hace14 <- sum(cpen$defunciones_hace14)
+aumento_defunciones <- total_defunciones - total_defunciones_ayer
+aumento_defunciones_porcentaje <- round(100 * aumento_defunciones / total_defunciones,1)
+aumento_defunciones_hace14 <- total_defunciones - total_defunciones_hace14
+aumento_defunciones_porcentaje_hace14 <- round(100 * aumento_defunciones_hace14 / total_defunciones,1)
+
+
+```
+
+### Total de defunciones registrados para `r fecha`: `r total_defunciones`. 
+### Aumento desde ayer: `r aumento_defunciones` (`r aumento_defunciones_porcentaje`%). .
+### Aumento en últimas dos semanas: `r aumento_defunciones_hace14` (`r aumento_defunciones_porcentaje_hace14`%). .
+
+## Resumen de defunciones por estado
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+options(width = 100)
+
+library(knitr)
+kable(cpen[,c("estados","ENTIDAD_FEDERATIVA",
+              "defunciones","defunciones_por_100k",
+              "defunciones_ayer","defunciones_hace14",
+              "aumento_defunciones","aumento_defunciones_hace14")], 
+      caption = paste("Tabla. Defunciones por estado para",fecha),
+      align = 'c', digits = round(1), row.names = FALSE,
+      col.names = c("ID","Estado",
+                    "Total de defunciones",
+                    "Defunciones por 100k habitantes",
+                    "Defunciones para ayer",
+                    "Defunciones hace dos semanas",
+                    "Aumento desde ayer",
+                    "Aumento desde hace dos semanas"
+                    )
+      )
+
+```
+
+# Histogramas de defunciones por estado, aumento desde ayer
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+dpen_ymax <- 1.1 * max(cpen$defunciones)
+
+dpen_barplot <- barplot(height = cpen$defunciones,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "red",
+        las = 2, ylim = c(0, dpen_ymax),
+        main = paste("Total defunciones por estado para ", fecha, " y aumento desde ayer"))
+
+barplot(height = cpen$defunciones_ayer, col = "gray",
+                        axes = FALSE, add = TRUE)
+
+text(x = dpen_barplot, y = cpen$defunciones + 0.05 * dpen_ymax, labels = cpen$defunciones, cex = 0.8)
+text(x = dpen_barplot, y = cpen$defunciones + 0.02 * dpen_ymax, labels = paste("+", cpen$aumento_defunciones),
+     col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("defunciones para ayer", "aumento"),
+      fill = c("gray","red"))
+```
+
+# Histogramas de defunciones por estado, aumento en últimas dos semanas
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+dpen_barplot <- barplot(height = cpen$defunciones,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "coral",
+        las = 2, ylim = c(0, dpen_ymax),
+        main = paste("Total defunciones por estado para ", fecha, " y aumento en dos semanas"))
+
+barplot(height = cpen$defunciones_hace14, col = "gray",
+                        axes = FALSE, add = TRUE)
+
+text(x = dpen_barplot, y = cpen$defunciones + 0.05 * dpen_ymax, labels = cpen$defunciones, cex = 0.8)
+text(x = dpen_barplot, y = cpen$defunciones + 0.02 * dpen_ymax, labels = paste("+", cpen$aumento_defunciones_hace14),
+     col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("defunciones hace dos semanas", "aumento"),
+      fill = c("gray","coral"))
+```
+
+
+# Histogramas de defunciones por estado normalizados a 100 mil habitantes
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+cpen <- cpen[order(cpen$defunciones_por_100k, decreasing = TRUE),]
+
+dpen_100k_ymax <- 1.1 * max(cpen$defunciones_por_100k)
+
+cpen_barplot1 <- barplot(height = cpen$defunciones_por_100k,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "gray",
+        ylab = "Defunciones por 100 k habitantes",
+        las = 2, ylim = c(0, dpen_100k_ymax),
+        main = paste("Defunciones por COVID-19 por 100k habitantes por estado para ", fecha))
+text(x = cpen_barplot1, y = cpen$defunciones_por_100k + 0.03 * dpen_100k_ymax, labels = round(cpen$defunciones_por_100k,1), cex = 0.7)
+
+cpen <- cpen[order(cpen$ENTIDAD_FEDERATIVA),]
+```
+
+
+# Total de pruebas realizadas
+
+```{r echo = FALSE}
+
+negativos_por_estado <- as.data.frame(table(datos_negativos$ENTIDAD_RES))
+colnames(negativos_por_estado) <- c("estados","negativos")
+
+negativos_por_estado_ayer <- as.data.frame(table(datos_negativos_ayer$ENTIDAD_RES))
+colnames(negativos_por_estado_ayer) <- c("estados","negativos_ayer")
+
+negativos_por_estado_hace14 <- as.data.frame(table(datos_negativos_hace14$ENTIDAD_RES))
+colnames(negativos_por_estado_hace14) <- c("estados","negativos_hace14")
+
+pendientes_por_estado <- as.data.frame(table(datos_pendientes$ENTIDAD_RES))
+colnames(pendientes_por_estado) <- c("estados","pendientes")
+
+pendientes_por_estado_ayer <- as.data.frame(table(datos_pendientes_ayer$ENTIDAD_RES))
+colnames(pendientes_por_estado_ayer) <- c("estados","pendientes_ayer")
+
+pendientes_por_estado_hace14 <- as.data.frame(table(datos_pendientes_hace14$ENTIDAD_RES))
+colnames(pendientes_por_estado_hace14) <- c("estados","pendientes_hace14")
+
+## variable npen - negativos por estado con nombres
+cpen <- merge(x = cpen, y = negativos_por_estado, by = "estados", all.x = TRUE)
+cpen <- merge(x = cpen, y = negativos_por_estado_ayer, by = "estados", all.x = TRUE)
+cpen <- merge(x = cpen, y = negativos_por_estado_hace14, by = "estados", all.x = TRUE)
+cpen <- merge(x = cpen, y = pendientes_por_estado, by = "estados", all.x = TRUE)
+cpen <- merge(x = cpen, y = pendientes_por_estado_ayer, by = "estados", all.x = TRUE)
+cpen <- merge(x = cpen, y = pendientes_por_estado_hace14, by = "estados", all.x = TRUE)
+
+cpen$pruebas_resultado <- cpen$casos + cpen$negativos
+cpen$pruebas_resultado_ayer <- cpen$casos_ayer + cpen$negativos_ayer
+cpen$pruebas_resultado_hace14 <- cpen$casos_hace14 + cpen$negativos_hace14
+
+cpen$pruebas <- cpen$pruebas_resultado + cpen$pendientes
+cpen$pruebas_ayer <- cpen$pruebas_resultado_ayer + cpen$pendientes_ayer
+cpen$pruebas_hace14 <- cpen$pruebas_resultado_hace14 + cpen$pendientes_hace14
+
+cpen$pruebas_resultado_por_100k <- 100000 * cpen$pruebas_resultado / cpen$Poblacion
+cpen$pruebas_resultado_por_100k_ayer <- 100000 * cpen$pruebas_resultado_ayer / cpen$Poblacion
+cpen$pruebas_resultado_por_100k_hace14 <- 100000 * cpen$pruebas_resultado_hace14 / cpen$Poblacion
+
+cpen$pruebas_por_100k <- 100000 * cpen$pruebas / cpen$Poblacion
+cpen$pruebas_por_100k_ayer <- 100000 * cpen$pruebas_ayer / cpen$Poblacion
+cpen$pruebas_por_100k_hace14 <- 100000 * cpen$pruebas_hace14 / cpen$Poblacion
+
+cpen$aumento_pruebas <- cpen$pruebas - cpen$pruebas_ayer
+cpen$aumento_pruebas_hace14 <- cpen$pruebas - cpen$pruebas_hace14
+cpen$aumento_pruebas_resultado <- cpen$pruebas_resultado - cpen$pruebas_resultado_ayer
+cpen$aumento_pruebas_resultado_hace14 <- cpen$pruebas_resultado - cpen$pruebas_resultado_hace14
+cpen$aumento_negativos <- cpen$negativos - cpen$negativos_ayer
+cpen$aumento_negativos_hace14 <- cpen$negativos - cpen$negativos_hace14
+
+cpen$proporcion_positivos <- 100 * cpen$casos / cpen$pruebas_resultado
+cpen$proporcion_positivos_ayer <- 100 * cpen$casos_ayer / cpen$pruebas_resultado_ayer
+cpen$proporcion_positivos_hace14 <- 100 * cpen$casos_hace14 / cpen$pruebas_resultado_hace14
+
+cpen$proporcion_positivos_nuevos <- 100 * cpen$aumento_casos / cpen$aumento_pruebas_resultado
+cpen$proporcion_positivos_nuevos_hace14 <- 100 * cpen$aumento_casos_hace14 / cpen$aumento_pruebas_resultado_hace14
+
+cpen$proporcion_positivos_con_pendientes <- 100 * cpen$casos / cpen$pruebas
+cpen$proporcion_pendientes <- 100 * cpen$pendientes / cpen$pruebas
+cpen$proporcion_negativos_con_pendientes <- 100 - cpen$proporcion_positivos_con_pendientes - cpen$proporcion_pendientes
+
+cpen <- cpen[order(cpen$ENTIDAD_FEDERATIVA),]
+
+total_negativos <- sum(cpen$negativos)
+total_negativos_ayer <- sum(cpen$negativos_ayer)
+total_negativos_hace14 <- sum(cpen$negativos_hace14)
+aumento_negativos <- total_negativos - total_negativos_ayer
+aumento_negativos_hace14 <- total_negativos - total_negativos_hace14
+
+total_pruebas_resultado <- sum(cpen$pruebas_resultado)
+aumento_pruebas_resultado <- sum(cpen$aumento_pruebas_resultado)
+aumento_pruebas_resultado_porcentaje <- round(100 * aumento_pruebas_resultado / total_pruebas_resultado,1)
+aumento_pruebas_resultado_hace14 <- sum(cpen$aumento_pruebas_resultado_hace14)
+aumento_pruebas_resultado_porcentaje_hace14 <- round(100 * aumento_pruebas_resultado_hace14 / total_pruebas_resultado,1)
+
+total_pruebas <- sum(cpen$pruebas)
+aumento_pruebas <- sum(cpen$aumento_pruebas)
+aumento_pruebas_porcentaje <- round(100 * aumento_pruebas / total_pruebas,1)
+aumento_pruebas_hace14 <- sum(cpen$aumento_pruebas_hace14)
+aumento_pruebas_porcentaje_hace14 <- round(100 * aumento_pruebas_hace14 / total_pruebas,1)
+
+porcentaje_positivos <- round(100 * sum(cpen$casos) / sum(cpen$pruebas_resultado), 1)
+porcentaje_positivos_ayer <- round(100 * sum(cpen$casos_ayer) / sum(cpen$pruebas_resultado_ayer), 1)
+porcentaje_positivos_hace14 <- round(100 * sum(cpen$casos_hace14) / sum(cpen$pruebas_resultado_hace14), 1)
+```
+
+## Pruebas con resultado
+### Total de pruebas con resultado para `r fecha`: `r total_pruebas_resultado`. 
+### Aumento de pruebas con resultado desde ayer: `r aumento_pruebas_resultado` (`r aumento_pruebas_resultado_porcentaje`%).
+### Aumento de pruebas con resultado en últimas dos semanas: `r aumento_pruebas_resultado_hace14` (`r aumento_pruebas_resultado_porcentaje_hace14`%).
+
+## Todas las pruebas
+### Total de pruebas para `r fecha`: `r total_pruebas`. 
+### Aumento de pruebas desde ayer: `r aumento_pruebas` (`r aumento_pruebas_porcentaje`%).
+### Aumento de pruebas en últimas dos semanas: `r aumento_pruebas_hace14` (`r aumento_pruebas_porcentaje_hace14`%).
+
+## Proporción de pruebas positivas
+### Pruebas positivas para `r fecha`: `r porcentaje_positivos`%. 
+### Pruebas positivas para ayer: `r porcentaje_positivos_ayer`%.
+### Pruebas positivas hace dos semanas: `r porcentaje_positivos_hace14`%.
+
+## Resumen de pruebas por estado
+
+```{r echo = FALSE}
+library(knitr)
+kable(cpen[,c("estados","ENTIDAD_FEDERATIVA",
+              "pruebas_por_100k",
+              "pruebas",
+              #"pruebas_ayer",
+              "pruebas_hace14",
+              "pruebas_resultado",
+              "pruebas_resultado_hace14",
+              "proporcion_positivos",
+              "proporcion_positivos_hace14",
+              "proporcion_positivos_nuevos_hace14"
+              )], 
+        caption = paste("Tabla. Pruebas por estado para",fecha),
+        align = 'c', digits = round(2), row.names = FALSE,
+        col.names = c("ID","Estado",
+                    "Pruebas por 100k habitantes",
+                    "Total de pruebas",
+                    #"Total de pruebas ayer",
+                    "Total de pruebas hace dos semanas",
+                    "Pruebas con resultado",
+                    "Pruebas con resultado hace dos semanas",                    
+                    "Proporción general de positivas, %", 
+                    "Proporción de positivas hace dos semanas, %", 
+                    "Proporción de positivas últimas dos semanas, %"
+                    
+                    )
+      )
+
+```
+
+
+# Histogramas de total de pruebas con resultado por estado, aumento desde ayer
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+npen_ymax <- 1.1 * max(cpen$pruebas_resultado)
+npen_barplot <- barplot(height = cpen$pruebas_resultado,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "red",
+        las = 2, ylim = c(0, npen_ymax),
+        main = paste("Pruebas con resultado por estado para ", fecha, " y aumeto desde ayer"))
+
+barplot(height = cpen$pruebas_resultado_ayer, col = "gray",
+                        axes = FALSE, add = TRUE)
+
+text(x = npen_barplot, y = cpen$pruebas_resultado + 0.05 * npen_ymax, labels = cpen$pruebas_resultado, cex = 0.7)
+text(x = npen_barplot, y = cpen$pruebas_resultado + 0.02 * npen_ymax, labels = paste("+", cpen$aumento_pruebas_resultado),
+     col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("con resultado para ayer", "aumento"),
+      fill = c("gray","red"))
+```
+
+# Histogramas de total de pruebas con resultado por estado, aumento en últimas dos semanas
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+npen_barplot <- barplot(height = cpen$pruebas_resultado,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "coral",
+        las = 2, ylim = c(0, npen_ymax),
+        main = paste("Pruebas con resultado por estado para ", fecha, " y aumeto en últimas dos semanas"))
+
+barplot(height = cpen$pruebas_resultado_hace14, col = "gray",
+                        axes = FALSE, add = TRUE)
+
+text(x = npen_barplot, y = cpen$pruebas_resultado + 0.05 * npen_ymax, labels = cpen$pruebas_resultado, cex = 0.7)
+text(x = npen_barplot, y = cpen$pruebas_resultado + 0.02 * npen_ymax, labels = paste("+", cpen$aumento_pruebas_resultado_hace14),
+     col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("con resultado hace dos semanas", "aumento"),
+      fill = c("gray","coral"))
+```
+
+# Proporción de pruebas con resultado positivo, negativo y pendiente por estado
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+npen_barplot <- barplot(height = t(cpen[,c("proporcion_positivos_con_pendientes",
+                                           "proporcion_negativos_con_pendientes",
+                                           "proporcion_pendientes")]),
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = c("red","lightgreen","lightyellow"),
+        las = 2, ylim = c(0, 115), ylab = "%",
+        main = paste("Proporcion entre pruebas positivas, negativas y pendientes por estado para ", fecha))
+
+legend("top", horiz = TRUE, bty = "n",
+ legend = c("positivo", "no positivo", "pendiente"),
+ fill = c("red","lightgreen","lightyellow"))
+
+```
+
+# Histogramas de pruebas (con y sin resultado) por estado normalizados a 100 mil habitantes
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+npen_ymax1 <- 1.1 * max(cpen$pruebas_por_100k)
+
+cpen <- cpen[order(cpen$pruebas_por_100k, decreasing = TRUE),]
+
+npen_barplot1 <- barplot(height = cpen$pruebas_por_100k,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "gray",
+        ylab = "Pruebas por 100k  habitantes",
+        las = 2, ylim = c(0, npen_ymax1),
+        main = paste("Pruebas por 100k habitantes por estado para ", fecha))
+text(x = npen_barplot1, y = cpen$pruebas_por_100k + 0.03 * npen_ymax1, labels = round(cpen$pruebas_por_100k,0), cex = 0.7)
+```
+
+
+
+# Relación entre número de casos confirmados y numero de pruebas por estados de México
+
+```{r fig.width = 10, fig.height = 12, echo = FALSE}
+# par(mfcol=c(2,2))
+# e <- 2.71828182846
+# 
+# plot(npen$pruebas, npen$casos,
+#      col = "blue", pch = 1, cex = 1.5, #xaxt='n',
+#      xlab = "No. de pruebas", ylab = "No. de casos confirmados",
+#      )
+# 
+# plot(npen$pruebas, npen$casos_por_100k,
+#      col = "blue", pch = 1, cex = 1.5, #xaxt='n',
+#      xlab = "No. de pruebas", ylab = "No. de casos confirmados por 100k habitantes",
+#      )
+# 
+# plot(npen$pruebas_por_100k, npen$casos,
+#      col = "blue", pch = 1, cex = 1.5, #xaxt='n',
+#      xlab = "No. de pruebas por 100k habitatnes", ylab = "No. de casos confirmados",
+#      )
+# 
+# 
+# plot(npen$pruebas_por_100k, npen$casos_por_100k,
+#      col = "blue", pch = 1, cex = 1.5, #xaxt='n',
+#      xlab = "No. de pruebas por 100k habitantes", ylab = "No. de casos confirmados por 100k habitantes",
+#      )
+
+```
+
+
+# Relación entre número de casos, numero de pruebas y porcentaje de pruebas positivas por estados de México
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+# par(mfcol=c(1,2))
+# e <- 2.71828182846
+# 
+# plot(log(npen$casos), npen$proporcion_positivos, 
+#      col = "blue", pch = 19, xaxt='n',
+#      ylab = "Pruebas positivas (%)", xlab = "Número de casos confirmados",
+#      #main = "Número de casos confirmados vs. proporción de positivos por municipio"
+#      )
+# axis(1, at = log(c(1,2,5,10,20,50,100,200,500,1000),e), labels = c(1,2,5,10,20,50,100,200,500,"1k"))
+# 
+# ## Agregar puntos para Jalisco
+# #points(log(cpmn[cpmn$ENTIDAD_FEDERATIVA == 'JALISCO',"casos"]), 
+# #     cpmn[cpmn$ENTIDAD_FEDERATIVA == 'JALISCO',"proporcion_positivos"], 
+# #     col = "orange", pch = 19) 
+# 
+# 
+# plot(log(npen$negativos + npen$casos), npen$proporcion_positivos, 
+#      col = "blue", pch = 19, xaxt='n',
+#      ylab = "Pruebas positivas (%)", xlab = "Número de pruebas",
+#      #main = "Número de pruebas vs. proporción de positivos por municipio"
+#      )
+# axis(1, at = log(c(1,2,5,10,20,50,100,200,500,1000,2000,5000),e), labels = c("1","2","5","10","20","50","100","200","500","1k","2k","5k"))
+
+```
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+
+options(width = 100)
+
+ hospitalizados_por_estado <- as.data.frame(table(datos_positivos_hospitalizados$ENTIDAD_RES))
+ colnames(hospitalizados_por_estado) <- c("estados","hospitalizados")
+
+ hospitalizados_por_estado_ayer <- as.data.frame(table(datos_positivos_hospitalizados_ayer$ENTIDAD_RES))
+ colnames(hospitalizados_por_estado_ayer) <- c("estados","hospitalizados_ayer")
+
+ hospitalizados_por_estado_hace14 <- as.data.frame(table(datos_positivos_hospitalizados_hace14$ENTIDAD_RES))
+ colnames(hospitalizados_por_estado_hace14) <- c("estados","hospitalizados_hace14")
+  
+ ## datos sobre número de hospitalizados por la ubicación de unidad médica
+ hospitalizados_por_estado_um <- as.data.frame(table(datos_positivos_hospitalizados$ENTIDAD_UM))
+ colnames(hospitalizados_por_estado_um) <- c("estados","hospitalizados_ocupacion")
+ 
+ uci_por_estado <- as.data.frame(table(datos_positivos_uci$ENTIDAD_RES))
+ colnames(uci_por_estado) <- c("estados","uci")
+
+ uci_por_estado_ayer <- as.data.frame(table(datos_positivos_uci_ayer$ENTIDAD_RES))
+ colnames(uci_por_estado_ayer) <- c("estados","uci_ayer")
+
+ uci_por_estado_hace14 <- as.data.frame(table(datos_positivos_uci_hace14$ENTIDAD_RES))
+ colnames(uci_por_estado_hace14) <- c("estados","uci_hace14")
+
+  
+ ## datos sobre número de casos en UCI por la ubicación de unidad médica 
+ uci_por_estado_um <- as.data.frame(table(datos_positivos_uci$ENTIDAD_UM))
+ colnames(uci_por_estado_um) <- c("estados","uci_ocupacion")
+ 
+ cpen <- merge(x = cpen, y = hospitalizados_por_estado, by = "estados", all.x = TRUE)
+ cpen <- merge(x = cpen, y = hospitalizados_por_estado_ayer, by = "estados", all.x = TRUE)
+ cpen <- merge(x = cpen, y = hospitalizados_por_estado_hace14, by = "estados", all.x = TRUE)
+ cpen <- merge(x = cpen, y = uci_por_estado, by = "estados", all.x = TRUE)
+ cpen <- merge(x = cpen, y = uci_por_estado_ayer, by = "estados", all.x = TRUE)
+ cpen <- merge(x = cpen, y = uci_por_estado_hace14, by = "estados", all.x = TRUE)
+
+ cpen$hospitalizados_por_100k <- 100000 * cpen$hospitalizados / cpen$Poblacion
+ cpen$hospitalizados_por_100k_ayer <- 100000 * cpen$hospitalizados_ayer / cpen$Poblacion
+ cpen$hospitalizados_por_100k_hace14 <- 100000 * cpen$hospitalizados_hace14 / cpen$Poblacion
+ cpen$uci_por_100k <- 100000 * cpen$uci / cpen$Poblacion
+ cpen$uci_por_100k_ayer <- 100000 * cpen$uci_ayer / cpen$Poblacion
+ cpen$uci_por_100k_hace14 <- 100000 * cpen$uci_hace14 / cpen$Poblacion
+ 
+ cpen[is.na(cpen)] <- 0
+
+ cpen$aumento_hospitalizados <- cpen$hospitalizados - cpen$hospitalizados_ayer
+ cpen$aumento_hospitalizados_hace14 <- cpen$hospitalizados - cpen$hospitalizados_hace14
+ cpen$aumento_uci <- cpen$uci - cpen$uci_ayer
+ cpen$aumento_uci_hace14 <- cpen$uci - cpen$uci_hace14
+ 
+ cpen <- merge(x = cpen, y = hospitalizados_por_estado_um, by = "estados", all.x = TRUE)
+ cpen <- merge(x = cpen, y = uci_por_estado_um, by = "estados", all.x = TRUE)
+ 
+ cpen$foraneos_hospitalizado <- cpen$hospitalizados_ocupacion - cpen$hospitalizados
+ cpen$foraneos_uci <- cpen$uci_ocupacion - cpen$uci
+
+ cpen$proporcion_hospitalizados <- 100 * cpen$hospitalizados / cpen$casos
+ cpen$proporcion_uci <- 100 * cpen$uci / cpen$casos
+
+ cpen$proporcion_hospitalizados_ultimas_dos_semanas <- 100 * cpen$aumento_hospitalizados_hace14 / cpen$aumento_casos_hace14
+ cpen$proporcion_uci_ultimas_dos_semanas <- 100 * cpen$aumento_uci_hace14 / cpen$aumento_casos_hace14
+
+ 
+ 
+ ## EXPERIMENTAL
+ ## Estimaciones de prevalencia
+ ## 1. Con base en hospitalizados. Se considera que aproximadamente 2.6% de todos personas con COVID-19 requieren hospitalización 
+ ## (incluye los asintomaticos) datos de Cristian Drosten (Alemania). Se estima prevalencia hace 2-3 semanas.
+ ## Parámetro por 100k habitantes
+ 
+ cpen$prevalencia_1 <- 100000 * cpen$hospitalizados / (0.026 * cpen$Poblacion)
+ 
+ ## 2. Con base en defunciones. Se considera que aproximadamente 0.53% de todos personas con COVID-19 mueren 
+ ## (incluye los asintomaticos) datos de Cristian Drosten (Alemania). Se estima prevalencia hace 3-4 semanas.
+ ## Parametro por 100k habitantes
+
+ cpen$prevalencia_2 <- cpen$defunciones_por_100k / 0.0053
+ 
+# ## 3. Con base en porcentaje de pruebas positivas
+# ## Parametro por 100k habitantes Tomando en cuenta datos de Renwick D. Have I already had coronavirus? How would I know and what should I do? the Guardian. 2020.http://www.theguardian.com/us-news/2020/apr/05/have-i-already-had-coronavirus-how-would-i-know (accessed 5 Apr 2020).
+# ## Aproximadamente 50% de casos son sintomaticos (y no entran asi en muestreo con pruebas)
+# 
+# #npen$prevalencia_3 <- 100000 * npen$casos + npen$proporcion_positivos / (0.5 * npen$Poblacion)
+# 
+# 
+# tabla_cpen <- cpen[,c("estados","ENTIDAD_FEDERATIVA","Longitud","Latitud","Poblacion",
+#               "casos","casos_ayer","casos_hace14",
+#               "casos_por_100k",
+#               "aumento_casos","aumento_casos_hace14",
+#               "negativos","negativos_ayer","aumento_negativos","pendientes","pendientes_ayer",
+#               "pruebas","pruebas_ayer","aumento_pruebas","proporcion_positivos","proporcion_positivos_nuevos","pruebas_por_100k",
+#               #"defunciones","defunciones_ayer","aumento_defunciones","defunciones_por_100k","proporcion_defunciones",
+#               #"hospitalizados","uci",
+#               #"hospitalizados_concentrado","uci_concentrado",
+#               #"proporcion_hospitalizados","proporcion_uci",
+#               #"foraneos_hospitalizado","foraneos_uci"
+#               #"prevalencia_1","prevalencia_2"
+#               )]
+ 
+#str(cpen)
+ tabla_cpen <- cpen
+ write.csv(tabla_cpen, file = paste("casos_por_estado_analisis_",fecha,".csv", sep = ""), row.names = FALSE)
+
+```
+
+# Casos hospitalizados
+
+```{r echo = FALSE}
+library(knitr)
+kable(cpen[,c("estados","ENTIDAD_FEDERATIVA",
+              "hospitalizados",
+              #"hospitalizados_hace14",
+              "aumento_hospitalizados_hace14",
+              "uci",
+              #"uci_hace14",
+              "aumento_uci_hace14",
+              "proporcion_hospitalizados",
+              "proporcion_hospitalizados_ultimas_dos_semanas",
+              "proporcion_uci",
+              "proporcion_uci_ultimas_dos_semanas"
+              )], 
+        caption = paste("Tabla. Pacientes con COVID-19 confirmado hospitalizados y en UCI por estado para",fecha),
+        align = 'c', digits = round(1), row.names = FALSE,
+        col.names = c("ID","Estado",
+                    "Cumulativo de hospitalizados",
+                    #"Hospitalizados hace dos semanas",
+                    "Ingresaron en hospital en últimas dos semanas",
+                    "Cumulativo en UCI",
+                    #"En UCI hace dos semanas",
+                    "Ingresaron a UCI en últimas dos semanas",
+                    "Proporcion general de pacientes hospitalizados, %",
+                    "Proporcion de casos hospitalizados en últimas dos semanas, %",                    
+                    "Proporcion general de casos en UCI, %",
+                    "Proporcion de casos en UCI en últimas dos semanas, %"                     
+
+                    )
+      )
+
+```
+
+# Histogramas cumulativas de casos hospitalizados por estado, aumento en últimas dos semanas
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+npen_ymax <- 1.1 * max(cpen$hospitalizados)
+npen_barplot <- barplot(height = cpen$hospitalizados,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "red",
+        las = 2, ylim = c(0, npen_ymax),
+        main = paste("Hospitalizados por estado para ", fecha, " y aumeto en últimas dos semanas"))
+
+barplot(height = cpen$hospitalizados_hace14, col = "beige",
+                        axes = FALSE, add = TRUE)
+
+text(x = npen_barplot, y = cpen$hospitalizados + 0.05 * npen_ymax, labels = cpen$hospitalizados, cex = 0.7)
+text(x = npen_barplot, y = cpen$hospitalizados + 0.02 * npen_ymax, labels = paste("+", cpen$aumento_hospitalizados_hace14),
+     col = "red", cex = 0.6)
+
+legend("topright", horiz = FALSE, bty = "n",
+      legend = c("hace dos semanas", "aumento en últimas dos semanas"),
+      fill = c("beige","red"))
+```
+
+# Histogramas cumulativas de casos atendidos en UCI por estado, aumento en últimas dos semanas
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+npen_ymax <- 1.1 * max(cpen$uci)
+npen_barplot <- barplot(height = cpen$uci,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "red",
+        las = 2, ylim = c(0, npen_ymax),
+        main = paste("En UCI por estado para ", fecha, " y aumeto en últimas dos semanas"))
+
+barplot(height = cpen$uci_hace14, col = "beige",
+                        axes = FALSE, add = TRUE)
+
+text(x = npen_barplot, y = cpen$uci + 0.05 * npen_ymax, labels = cpen$uci, cex = 0.7)
+text(x = npen_barplot, y = cpen$uci + 0.02 * npen_ymax, labels = paste("+", cpen$aumento_uci_hace14),
+     col = "red", cex = 0.6)
+
+legend("topright", horiz = FALSE, bty = "n",
+      legend = c("hace dos semanas", "aumento en últimas dos semanas"),
+      fill = c("beige","red"))
+```
+
+# Proporción de casos hospitlizados y en UCI con COVID confirmado en últimas dos semanas
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+npen_ymax <- 1.1 * max(cpen$aumento_casos_hace14)
+npen_barplot <- barplot(height = cpen$aumento_casos_hace14,
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = "gray",
+        las = 2, ylim = c(0, npen_ymax),
+        main = paste("Ambulatorios, hospitalizados y en UCI por estado para ", fecha, " en últimas dos semanas"))
+
+barplot(height = cpen$aumento_hospitalizados_hace14, col = "beige",
+                        axes = FALSE, add = TRUE)
+barplot(height = cpen$aumento_uci_hace14, col = "red",
+                        axes = FALSE, add = TRUE)
+
+text(x = npen_barplot, y = cpen$aumento_casos_hace14  + 0.08 * npen_ymax, 
+     labels = cpen$aumento_casos_hace14 - cpen$aumento_hospitalizados_hace14, cex = 0.7, col = "darkgray")
+text(x = npen_barplot, y = cpen$aumento_casos_hace14 + 0.05 * npen_ymax, 
+     labels = cpen$aumento_hospitalizados_hace14, cex = 0.7, col = "black")
+text(x = npen_barplot, y = cpen$aumento_casos_hace14 + 0.02 * npen_ymax, labels = paste(cpen$aumento_uci_hace14),
+     col = "red", cex = 0.6)
+
+legend("topright", horiz = FALSE, bty = "n",
+      legend = c("ambulatorios","hospitalizados", "en UCI"),
+      fill = c("gray","beige","red"))
+```
+
+# Proporción de casos hospitlizados y en UCI con COVID confirmado en últimas dos semanas (2)
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mar = c(18, 4, 4, 2))
+
+cpen$proporcion_ambulatorios_ultimos14 <- 100 * (cpen$aumento_casos_hace14 - cpen$aumento_hospitalizados_hace14) /
+                                                  cpen$aumento_casos_hace14
+cpen$proporcion_hospitalizados_ultimos14 <- 100 * (cpen$aumento_hospitalizados_hace14 - cpen$aumento_uci_hace14) /
+                                                  cpen$aumento_casos_hace14
+cpen$proporcion_uci_ultimos14 <- 100 * cpen$aumento_uci_hace14 / cpen$aumento_casos_hace14
+
+
+npen_barplot <- barplot(height = t(cpen[,c("proporcion_uci_ultimos14",
+                                           "proporcion_hospitalizados_ultimos14",
+                                           "proporcion_ambulatorios_ultimos14")]),
+        names.arg = cpen$ENTIDAD_FEDERATIVA, col = c("red","beige","gray"),
+        las = 2, ylim = c(0, 115), ylab = "%",
+        main = paste("Casos ambulatorios, hospitalizados y en UCI\n con COVID-19 confirmado en últimos dos semanas por estado para ", fecha))
+
+legend("top", horiz = TRUE, bty = "n",
+ legend = c("en UCI", "hospitalizados", "ambulatorios"),
+ fill = c("red","beige","gray"))
+
+```
+
+# Tabla de registros positivos por municipio
+
+```{r echo=FALSE}
+casos_por_municipio <- as.data.frame(table(datos_positivos$ENTIDAD_RES,datos_positivos$MUNICIPIO_RES))
+colnames(casos_por_municipio) <- c("estados","municipios","casos")
+#dim(casos_por_municipio)
+
+negativos_por_municipio <- as.data.frame(table(datos_negativos$ENTIDAD_RES,datos_negativos$MUNICIPIO_RES))
+colnames(negativos_por_municipio) <- c("estados","municipios","negativos")
+#dim(negativos_por_municipio)
+
+pendientes_por_municipio <- as.data.frame(table(datos_pendientes$ENTIDAD_RES,datos_pendientes$MUNICIPIO_RES))
+colnames(pendientes_por_municipio) <- c("estados","municipios","pendientes")
+#dim(pendientes_por_municipio)
+
+casos_por_municipio_ayer <- as.data.frame(table(datos_positivos_ayer$ENTIDAD_RES,datos_positivos_ayer$MUNICIPIO_RES))
+colnames(casos_por_municipio_ayer) <- c("estados_ayer","municipios_ayer","casos_ayer")
+#dim(casos_por_municipio_ayer)
+
+negativos_por_municipio_ayer <- as.data.frame(table(datos_negativos_ayer$ENTIDAD_RES,datos_negativos_ayer$MUNICIPIO_RES))
+colnames(negativos_por_municipio_ayer) <- c("estados_ayer","municipios_ayer","negativos_ayer")
+#dim(negativos_por_municipio_ayer)
+
+pendientes_por_municipio_ayer <- as.data.frame(table(datos_pendientes_ayer$ENTIDAD_RES,datos_pendientes_ayer$MUNICIPIO_RES))
+colnames(pendientes_por_municipio_ayer) <- c("estados_ayer","municipios_ayer","pendientes_ayer")
+#dim(pendientes_por_municipio_ayer)
+
+defunciones_por_municipio <- as.data.frame(table(datos_defunciones$ENTIDAD_RES,datos_defunciones$MUNICIPIO_RES))
+colnames(defunciones_por_municipio) <- c("estados","municipios","defunciones")
+#dim(defunciones_por_municipio)
+
+defunciones_por_municipio_ayer <- as.data.frame(table(datos_defunciones_ayer$ENTIDAD_RES,datos_defunciones_ayer$MUNICIPIO_RES))
+colnames(defunciones_por_municipio_ayer) <- c("estados_ayer","municipios_ayer","defunciones_ayer")
+#dim(defunciones_por_municipio_ayer)
+
+## variable cpmn - casos por municipio con nombres, producto de varos "merge"
+cpmn <- merge(x = casos_por_municipio, y = casos_por_municipio_ayer, 
+              by.x = c("estados","municipios"), by.y = c("estados_ayer","municipios_ayer"), all.x = TRUE)
+
+## para los municipios que se agregaron en tabla solo hoy se requiere agregar registro 0 ayer (sustituir NA)
+cpmn[is.na(cpmn$casos),"casos"] <- 0
+cpmn[is.na(cpmn$casos_ayer),"casos_ayer"] <- 0
+
+## calcular aumento de casos de ayer a hoy
+cpmn$aumento_casos <- cpmn$casos - cpmn$casos_ayer
+
+## agregar datos sobre negativos
+cpmn <- merge(x = cpmn, y = negativos_por_municipio, 
+              by.x = c("estados","municipios"), by.y = c("estados","municipios"), all.x = TRUE)
+cpmn <- merge(x = cpmn, y = negativos_por_municipio_ayer, 
+              by.x = c("estados","municipios"), by.y = c("estados_ayer","municipios_ayer"), all.x = TRUE)
+
+cpmn[is.na(cpmn$negativos),"negativos"] <- 0
+cpmn[is.na(cpmn$negativos_ayer),"negativos_ayer"] <- 0
+
+cpmn$aumento_negativos <- cpmn$negativos - cpmn$negativos_ayer
+
+cpmn$proporcion_positivos <- 100 * (cpmn$casos / (cpmn$negativos + cpmn$casos))
+cpmn$proporcion_positivos_ayer <- 100 * (cpmn$casos_ayer / (cpmn$negativos_ayer + cpmn$casos_ayer))
+cpmn[is.na(cpmn$proporcion_positivos),"proporcion_positivos"] <- 0
+cpmn[is.na(cpmn$proporcion_positivos_ayer),"proporcion_positivos_ayer"] <- 0
+
+## agregar datos sobre pruebas pendientes
+cpmn <- merge(x = cpmn, y = pendientes_por_municipio, 
+              by.x = c("estados","municipios"), by.y = c("estados","municipios"), all.x = TRUE)
+cpmn <- merge(x = cpmn, y = pendientes_por_municipio_ayer, 
+              by.x = c("estados","municipios"), by.y = c("estados_ayer","municipios_ayer"), all.x = TRUE)
+
+## agregar datos sobre defunciones
+cpmn <- merge(x = cpmn, y = defunciones_por_municipio, 
+              by.x = c("estados","municipios"), by.y = c("estados","municipios"), all.x = TRUE)
+cpmn <- merge(x = cpmn, y = defunciones_por_municipio_ayer, 
+              by.x = c("estados","municipios"), by.y = c("estados_ayer","municipios_ayer"), all.x = TRUE)
+
+cpmn[is.na(cpmn$defunciones),"defunciones"] <- 0
+cpmn[is.na(cpmn$defunciones_ayer),"defunciones_ayer"] <- 0
+cpmn$aumento_defunciones <- cpmn$defunciones - cpmn$defunciones_ayer
+
+cpmn <- merge(x = cpmn, y = estados, by.x = "estados", by.y = "CLAVE_ENTIDAD", all.x = TRUE)
+
+#dim(cpmn)
+#str(cpmn)
+#levels(cpmn$estados)
+#levels(cpmn$municipios)
+#levels(cpmn$ENTIDAD_FEDERATIVA)
+#levels(cpmn$ABREVIATURA)
+
+cpmn$estados <- as.character(cpmn$estados)
+cpmn$municipios <- as.character(cpmn$municipios)
+
+## al realizar merge con tabla de referencia de municipios se qeudan solo los registros validos de municipios
+## (la generación de tabla cros-validada con "table" genera combinaciones que no existen)
+cpmn <- merge(x = cpmn, y = municipios, all.x = FALSE,
+              by.x = c("estados","municipios"), 
+              by.y = c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO"))
+cpmn <- merge(x = cpmn, y = municipios2, all.x = TRUE,
+              by.x = c("estados","municipios"), 
+              by.y = c("Cve_Ent","Cve_Mun"))
+
+
+cpmn$estados <- as.factor(cpmn$estados)
+cpmn$municipios <- as.factor(cpmn$municipios)
+
+cpmn$Clave_Mun_Ent_Texto <- as.numeric(as.character(cpmn$municipios)) + 
+                            1000 * as.numeric(as.character(cpmn$estados))
+cpmn$Clave_Mun_Ent_Texto <- sprintf("%05d", cpmn$Clave_Mun_Ent_Texto)
+
+## agregar semana de inicio
+datos_positivos$Clave_Mun_Ent_Texto <- as.numeric(as.character(datos_positivos$MUNICIPIO_RES)) + 
+                            1000 * as.numeric(as.character(datos_positivos$ENTIDAD_RES))
+datos_positivos$Clave_Mun_Ent_Texto <- sprintf("%05d", datos_positivos$Clave_Mun_Ent_Texto)
+semana_inicio_municipio <- aggregate(semana ~ Clave_Mun_Ent_Texto, data = datos_positivos, FUN = "min")
+
+cpmn <- merge(x = cpmn, y = semana_inicio_municipio, all.x = TRUE,
+              by.x = c("Clave_Mun_Ent_Texto"), 
+              by.y = c("Clave_Mun_Ent_Texto"))
+
+cpmn$casos_por_100k <- 100000 * cpmn$casos / cpmn$Pob_Municipio
+cpmn$pruebas_por_100k <- 100000 * (cpmn$casos + cpmn$negativos + cpmn$pendientes) / cpmn$Pob_Municipio
+
+cpmn <- cpmn[order(cpmn$casos, decreasing = TRUE),]
+
+#str(cpmn)
+
+tabla_cpmn <- cpmn[,c("casos","casos_ayer","aumento_casos",
+                      "negativos","negativos_ayer","aumento_negativos",
+                      "defunciones","defunciones_ayer","aumento_defunciones",
+                      "proporcion_positivos","proporcion_positivos_ayer","pendientes",
+                      "casos_por_100k","pruebas_por_100k",
+                      "Nom_Loc","MUNICIPIO","ENTIDAD_FEDERATIVA","ABREVIATURA",
+                      "Lat_Decimal","Lon_Decimal",
+                      "Clave_Mun_Ent_Texto","Pob_Municipio","semana")]
+
+write.csv(tabla_cpmn, file = paste("casos_por_municipio_analisis_semanas_",fecha,".csv", sep = ""), row.names = FALSE)
+
+```
+
+
+```{r echo = FALSE}
+ options(width = 100)
+ 
+ tabla_por_presentar <- head(tabla_cpmn[,c("casos","aumento_casos","casos_por_100k","defunciones","aumento_defunciones",
+                                                "negativos","proporcion_positivos","pruebas_por_100k",
+                                                "Nom_Loc","MUNICIPIO","ABREVIATURA")],n = 100L)
+ 
+ library(knitr)
+ kable(tabla_por_presentar, caption = paste("Tabla. Los cien municipios con mayór incidencia para",fecha),
+       align = 'c', digits = round(1), row.names = FALSE,
+       col.names = c("Casos confirmados","Aumento casos","Casos por 100k habitantes","Defunciones","Aumento def.",
+                     "Pruebas negativas","% de pruebas positivas","Pruebas por 100k habitantes",
+                     "Localidad","Municipio","Estado")
+       )
+
+```
+
+
+# Relación entre número de casos confirmados y numero de pruebas por municipios de México (ejes lineales)
+
+```{r fig.width = 10, fig.height = 12, echo = FALSE}
+par(mfcol=c(2,2))
+e <- 2.71828182846
+
+plot(cpmn$negativos + cpmn$casos + cpmn$pendientes, cpmn$casos, 
+     col = "blue", pch = 19, cex = 1, #xaxt='n',
+     xlab = "No. de pruebas", ylab = "No. de casos confirmados",
+     )
+
+plot(cpmn$negativos + cpmn$casos + cpmn$pendientes, cpmn$casos_por_100k,
+     col = "blue", pch = 19, cex = 1, #xaxt='n',
+     xlab = "No. de pruebas", ylab = "No. de casos confirmados por 100k habitantes",
+     )
+
+plot(cpmn$pruebas_por_100k, cpmn$casos, 
+     col = "blue", pch = 19, cex = 1, #xaxt='n',
+     xlab = "No. de pruebas por 100k habitatnes", ylab = "No. de casos confirmados",
+     )
+
+
+plot(cpmn$pruebas_por_100k, cpmn$casos_por_100k,
+     col = "blue", pch = 19, cex = 1, #xaxt='n',
+     xlab = "No. de pruebas por 100k habitantes", ylab = "No. de casos confirmados por 100k habitantes",
+     )
+
+```
+
+# Relación entre número de casos confirmados y numero de pruebas por municipios de México (ejes logaritmicos)
+
+```{r fig.width = 10, fig.height = 12, echo = FALSE}
+par(mfcol=c(2,2))
+e <- 2.71828182846
+
+plot(log(cpmn$negativos + cpmn$casos + cpmn$pendientes), log(cpmn$casos), 
+     col = "blue", pch = 19, cex = 1, #xaxt='n',
+     xlab = "LN No. de pruebas", ylab = "LN No. de casos confirmados",
+     )
+
+plot(log(cpmn$negativos + cpmn$casos + cpmn$pendientes), log(cpmn$casos_por_100k),
+     col = "blue", pch = 19, cex = 1, #xaxt='n',
+     xlab = "LN No. de pruebas", ylab = "LN No. de casos confirmados por 100k habitantes",
+     )
+
+plot(log(cpmn$pruebas_por_100k), log(cpmn$casos), 
+     col = "blue", pch = 19, cex = 1, #xaxt='n',
+     xlab = "LN No. de pruebas por 100k habitatnes", ylab = "LN No. de casos confirmados",
+     )
+
+
+plot(log(cpmn$pruebas_por_100k), log(cpmn$casos_por_100k),
+     col = "blue", pch = 19, cex = 1, #xaxt='n',
+     xlab = "LN No. de pruebas por 100k habitantes", ylab = "LN No. de casos confirmados por 100k habitantes",
+     )
+
+```
+
+# Relación entre número de casos, numero de pruebas y porcentaje de pruebas positivas por municipios de México
+
+```{r fig.width = 10, fig.height = 8, echo = FALSE}
+par(mfcol=c(1,2))
+e <- 2.71828182846
+
+plot(log(cpmn$casos), cpmn$proporcion_positivos, 
+     col = "blue", pch = 19, xaxt='n',
+     ylab = "Pruebas positivas (%)", xlab = "Número de casos confirmados",
+     #main = "Número de casos confirmados vs. proporción de positivos por municipio"
+     )
+axis(1, at = log(c(1,2,5,10,20,50,100,200,500),e), labels = c(1,2,5,10,20,50,100,200,500))
+
+## Agregar puntos para Jalisco
+#points(log(cpmn[cpmn$ENTIDAD_FEDERATIVA == 'JALISCO',"casos"]), 
+#     cpmn[cpmn$ENTIDAD_FEDERATIVA == 'JALISCO',"proporcion_positivos"], 
+#     col = "orange", pch = 19) 
+
+knitr::asis_output(htmltools::htmlPreserve('<div class="pagebreak"> </div>'))
+
+plot(log(cpmn$negativos + cpmn$casos), cpmn$proporcion_positivos, 
+     col = "blue", pch = 19, xaxt='n',
+     ylab = "Pruebas positivas (%)", xlab = "Número de pruebas",
+     #main = "Número de pruebas vs. proporción de positivos por municipio"
+     )
+axis(1, at = log(c(1,2,5,10,20,50,100,200,500),e), labels = c(1,2,5,10,20,50,100,200,500))
+
+```
+
+```{r echo=FALSE}
+## Función para generar leyenda con circulos
+ addLegendCustom <- function(map, title, colors, labels, sizes, position, group, opacity = 0.5) {
+  colorAdditions <- paste0(colors, " !important; -webkit-print-color-adjust: exact; border-radius: 50%; width:", sizes, "px; height:", sizes, "px")
+  labelAdditions <- paste0("<div style='display: inline-block; height: ", 
+                           sizes, "px; margin-top: 4px; line-height: ", sizes, "px;'>", 
+                           labels, "</div>")
+  return(addLegend(map, colors = colorAdditions, 
+                   labels = labelAdditions, opacity = opacity, 
+                   position = position, group = group, title = title))
+ }
+
+filterHighLevel <- function(labels) {
+  labels[labels < 20] <- ""
+  return(as.character(labels))
+}
+
+getColor <- function(mag) {
+  sapply(mag, function(mag_col) {
+  if(mag_col <= 2) {
+    "darkgreen"
+  } else if(mag_col <= 5) {
+    "yellow"
+  } else if(mag_col <= 10) {
+    "orange"
+  } else if(mag_col <= 30) {
+    "coral"
+  } else {
+    "red"
+  } })
+}
+
+```
+
+
+# Mapa de pruebas: número de pruebas para COVID-19 y % de positividad por municipio para `r fecha`
+
+```{r fig.width = 10, fig.height = 8, warning = FALSE, echo = FALSE}
+library(leaflet)
+library(sp)
+e <- 2.71828182846
+
+ m1 <- leaflet()
+ m1 <- addTiles(m1)
+ m1 <- setView(m1, lng=-100, lat=24, zoom = 5)
+ 
+ ## quitar los registros sin presencia de positivos
+ cpmn_casos <- cpmn[!is.null(cpmn$proporcion_positivos),]
+ 
+ ## ordenar por proporción de positivos para asegurar primero rojos
+ cpmn_casos <- cpmn_casos[order(cpmn_casos$proporcion_positivos, decreasing = FALSE),]
+
+
+  ## layers
+  m1 <- addCircleMarkers(m1, lng = cpmn_casos$Lon_Decimal, lat = cpmn_casos$Lat_Decimal, 
+                        weight = 7 * log(cpmn_casos$casos + cpmn_casos$negativos + 1, e), 
+                        radius = 0, 
+                        color = getColor(cpmn_casos$proporcion_positivos),
+                        stroke = TRUE, fillOpacity = 1)
+
+
+  m1 <- addLegendCustom(m1, 
+                      title = "Número de pruebas",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("darkgreen", "darkgreen", "darkgreen"), 
+                      labels = c("20","100","500"), 
+                      sizes = c(5 * log(20,e),
+                                5 * log(100,e),
+                                5 * log(500,e)
+                                ))
+  m1 <- addLegendCustom(m1, 
+                      title = "% de positivos en pruebas",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("darkgreen","yellow","orange", "coral","red"), 
+                      labels = c("<2%","2-5%","5-10%","10-30%",">30%"), 
+                      sizes = c(5 * log(50,e),
+                                5 * log(50,e),
+                                5 * log(50,e),
+                                5 * log(50,e),
+                                5 * log(50,e)
+                                ))
+
+ 
+ m1
+ 
+```
+
+# Mapa de casos confirmados de COVID-19 por municipio para `r fecha`
+
+```{r fig.width = 10, fig.height = 8, warning = FALSE, echo = FALSE}
+library(leaflet)
+library(sp)
+e <- 2.71828182846
+
+ m2 <- leaflet()
+ m2 <- addTiles(m2)
+ m2 <- setView(m2, lng=-100, lat=24, zoom = 5)
+ 
+ 
+ cpmn_casos <- cpmn[cpmn$casos > 0,]
+ cpmn_aumento <- cpmn[cpmn$aumento_casos > 0,]
+ 
+  ## layers
+ m2 <- addCircleMarkers(m2, lng = cpmn_casos$Lon_Decimal, lat = cpmn_casos$Lat_Decimal, 
+                        weight = 5 * log(cpmn_casos$casos + 1, e), radius = 0, 
+                  color= "red", stroke = TRUE, fillOpacity = 1)
+ m2 <- addCircleMarkers(m2, lng = cpmn_aumento$Lon_Decimal, lat = cpmn_aumento$Lat_Decimal, 
+                        weight = 5 * log(cpmn_aumento$aumento_casos + 1, e), radius = 0, 
+                  color= "black", stroke = TRUE, fillOpacity = 1)
+
+  
+  m2 <- addLegendCustom(m2, 
+                      title = "aumento de casos",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("black", "black", "black"), 
+                      labels = c("+2", "+5","+20"), 
+                      sizes = c(5 * log(2,e),
+                                5 * log(5,e),
+                                5 * log(20,e)
+                                ))
+  m2 <- addLegendCustom(m2, 
+                      title = "casos de COVID-19",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("red", "red", "red", "red"), 
+                      labels = c("1-5","5-20", "20-100", ">100"), 
+                      sizes = c(
+                                5 * log(5,e),
+                                5 * log(20,e), 
+                                5 * log(100,e), 
+                                5 * log(500,e)
+                                ))
+
+ 
+ m2
+```
+
+
+# Mapa de defunciones por COVID-19 por municipio para `r fecha`
+
+```{r fig.width = 10, fig.height = 8, warning = FALSE, echo = FALSE}
+library(leaflet)
+library(sp)
+e <- 2.71828182846
+
+ m3 <- leaflet()
+ m3 <- addTiles(m3)
+ m3 <- setView(m3, lng=-100, lat=24, zoom = 5)
+ 
+ 
+ cpmn_defunciones <- cpmn[cpmn$defunciones > 0,]
+ cpmn_aumento_defunciones <- cpmn[cpmn$aumento_defunciones > 0,]
+ 
+  ## layers
+ m3 <- addCircleMarkers(m3, lng = cpmn_defunciones$Lon_Decimal, lat = cpmn_defunciones$Lat_Decimal, 
+                        weight = 10 * log(cpmn_defunciones$defunciones + 1, e), radius = 0, 
+                  color= "dimgrey", stroke = TRUE, fillOpacity = 1)
+ m3 <- addCircleMarkers(m3, lng = cpmn_aumento_defunciones$Lon_Decimal, lat = cpmn_aumento_defunciones$Lat_Decimal, 
+                        weight = 10 * log(cpmn_aumento_defunciones$aumento_defunciones + 1, e), radius = 0, 
+                  color= "black", stroke = TRUE, fillOpacity = 1)
+
+  
+  m3 <- addLegendCustom(m3, 
+                      title = "aumento de defunciones",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("black", "black"), 
+                      labels = c("+2", "+5"), 
+                      sizes = c(10 * log(2,e),
+                                10 * log(5,e)
+                                ))
+  m3 <- addLegendCustom(m3, 
+                      title = "defunciones por COVID-19",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("dimgrey", "dimgrey"), 
+                      labels = c("1-5","5-20"),
+                      sizes = c(
+                                10 * log(5,e),
+                                10 * log(20,e)
+                              ))
+
+ 
+ m3
+ 
+```
+
