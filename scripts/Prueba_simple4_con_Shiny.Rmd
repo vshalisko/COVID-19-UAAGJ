@@ -8,7 +8,7 @@ output:
 
 ## Casos de COVID-19 en México en abril 2019
 
-### Mapas y graficos interactivos con *Leaflet* y *Shiny*
+### Mapas y graficos interactivos con *Leaflet* y aplicación *Shiny*
 
 Datos fuente sobre los casos fueron descargados desde los sitios web
 <https://www.unionguanajuato.mx/articulo/2020/03/29/cultura/casos-de-coronavirus-en-mexico-por-estado-estadisticas-covid-19>
@@ -16,14 +16,14 @@ y <https://coronavirus.gob.mx/>
 (Cada estado esta representado por su capital)
 
 
-```{r}
+```{r echo = FALSE}
 library(sp)
 library(tidyr)
 library(leaflet)
 library(shiny)
 ```
 
-```{r}
+```{r echo = FALSE}
 knitr::asis_output(htmltools::htmlPreserve("
 <style>
 @media print
@@ -41,7 +41,7 @@ h1 {page-break-before:always}
 ```
 
 
-```{r}
+```{r echo = FALSE}
 ## Función para generar leyenda con circulos
  addLegendCustom <- function(map, title, colors, labels, sizes, position, group, opacity = 0.5) {
   colorAdditions <- paste0(colors, "; border-radius: 50%; width:", sizes, "px; height:", sizes, "px")
@@ -58,13 +58,12 @@ filterHighLevel <- function(labels) {
 }
 ```
 
-```{r}
+```{r echo = FALSE}
 casos <- read.csv("casos_por_estado_por_dia_eventos.csv")
-str(casos)
+#str(casos)
 ```
 
-
-```{r}
+```{r echo = FALSE}
 ## transformar casos a formato largo
 nombres_cols <- names(casos[,7:dim(casos)[2]])
 casos_largo <- gather(casos, key = "fecha", value = "casos", nombres_cols)
@@ -81,7 +80,7 @@ mi_max_y <- 1.1 * max(casos_largo$casos)
 
 ```
 
-```{r fig.width = 9, fig.height = 8}
+```{r fig.width = 9, fig.height = 8, echo = FALSE}
 
 ## Preparar mapa estatica con tamaño de circulos proporcional al número cumulativo de casos
 
@@ -109,11 +108,12 @@ mi_max_y <- 1.1 * max(casos_largo$casos)
 ```
 
 
-## Mapa y histograma en Shiny
+## Mapa e histograma interactivos
+#### Aplicación *Shiny* funciona en el entorno RStudio y con el servidor *Shiny* habilitado
 
-```{r fig.width = 9, fig.height = 12}
+```{r fig.width = 9, fig.height = 12, echo = FALSE}
 
-
+ ## Mapa inicial
  m2 <- m1
 
  m2 <- addLegendCustom(m2, 
@@ -130,6 +130,7 @@ mi_max_y <- 1.1 * max(casos_largo$casos)
                       )
 
 
+ ## Interface de usuario para aplicación Shiny
  ui = fluidPage(
    titlePanel("Casos confirmados de COVID-19 (suma en el rango de fechas)"),
    sliderInput(inputId = "fecha", 
@@ -147,6 +148,7 @@ mi_max_y <- 1.1 * max(casos_largo$casos)
    leafletOutput("mapa_casos", width = "100%", height = 600)
    )
  
+ ## Servidor de contenido para aplicación Shiny
  server <- function(input, output, session) {
    
    output$mapa_casos <- renderLeaflet({ 
@@ -197,7 +199,8 @@ mi_max_y <- 1.1 * max(casos_largo$casos)
               )       
     })
  }
-
+ 
+ ## Aplicación
  shinyApp(ui = ui, server = server,  options = list(height = 1100, width = "100%") )
 
 
