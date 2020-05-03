@@ -1,0 +1,205 @@
+---
+title: "Pruebas con mapas interactivos"
+author: "Viacheslav Shalisko"
+date: "2/5/2020"
+output:
+  html_document: default
+---
+
+## Casos de COVID-19 en México en abril 2019
+
+### Mapas y graficos interactivos con *Leaflet* y *Shiny*
+
+Datos fuente sobre los casos fueron descargados desde los sitios web
+<https://www.unionguanajuato.mx/articulo/2020/03/29/cultura/casos-de-coronavirus-en-mexico-por-estado-estadisticas-covid-19>
+y <https://coronavirus.gob.mx/>
+(Cada estado esta representado por su capital)
+
+
+```{r}
+library(sp)
+library(tidyr)
+library(leaflet)
+library(shiny)
+```
+
+```{r}
+knitr::asis_output(htmltools::htmlPreserve("
+<style>
+@media print
+{
+h1 {page-break-before:always}
+.legend {
+   visble:visible;
+   background:white !important;
+   -webkit-print-color-adjust: exact;
+   opacity: 1;
+  }
+}
+</style>
+"))
+```
+
+
+```{r}
+## Función para generar leyenda con circulos
+ addLegendCustom <- function(map, title, colors, labels, sizes, position, group, opacity = 0.5) {
+  colorAdditions <- paste0(colors, "; border-radius: 50%; width:", sizes, "px; height:", sizes, "px")
+  labelAdditions <- paste0("<div style='display: inline-block; height: ", 
+                           sizes, "px; margin-top: 4px; line-height: ", sizes, "px;'>", 
+                           labels, "</div>")
+  return(addLegend(map, colors = colorAdditions, 
+                   labels = labelAdditions, opacity = opacity, 
+                   position = position, group = group, title = title))
+ }
+filterHighLevel <- function(labels) {
+  labels[labels < 20] <- ""
+  return(as.character(labels))
+}
+```
+
+```{r}
+casos <- read.csv("casos_por_estado_por_dia_eventos.csv")
+str(casos)
+```
+
+
+```{r}
+## transformar casos a formato largo
+nombres_cols <- names(casos[,7:dim(casos)[2]])
+casos_largo <- gather(casos, key = "fecha", value = "casos", nombres_cols)
+
+casos_largo$fecha <- as.Date(
+  substr(casos_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+#str(casos_largo)
+
+# eliminar casos negativos (sustituir por 0)
+casos_largo[casos_largo$casos < 0,"casos"] <- 0
+
+mi_max_y <- 1.1 * max(casos_largo$casos)
+
+```
+
+```{r fig.width = 9, fig.height = 8}
+
+## Preparar mapa estatica con tamaño de circulos proporcional al número cumulativo de casos
+
+  casos_seleccion <- casos_largo[casos_largo$fecha == as.Date("2020-05-01"),]
+  
+  m1 <- leaflet()
+  m1 <- addTiles(m1)
+  m1 <- setView(m1, lng=-101, lat=24, zoom = 5)
+  m1 <- addCircleMarkers(m1, 
+                         lng = casos_seleccion$Longitud, 
+                         lat = casos_seleccion$Latitud, 
+                         weight = 10 * log(casos_seleccion$casos, 10) + 0.01 * casos_seleccion$casos, 
+                         radius = 0, 
+                         color= "red", stroke = TRUE, fillOpacity = 0.8)
+  #m1
+```
+
+```{r echo = FALSE}
+## Grafica de barras
+     # m2_barplot <- barplot(height = casos_seleccion$casos, 
+     #    names.arg = casos_seleccion$ENTIDAD_FEDERATIVA, col = "gray",
+     #    las = 2, ylim = c(0, 5000)
+     #    #main = paste("Total casos por estado para ", fecha, " y aumento desde ayer")
+     #    )
+```
+
+
+## Mapa y histograma en Shiny
+
+```{r fig.width = 9, fig.height = 12}
+
+
+ m2 <- m1
+
+ m2 <- addLegendCustom(m2, 
+                      title = "COVID-19",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("red", "red", "red", "red"), 
+                      labels = c("20", "50", "200", "1000"), 
+                      sizes = c(
+                                10 * log(20, 10) + 0.2, 
+                                10 * log(50, 10) + 0.5, 
+                                10 * log(200, 10) + 2,
+                                10 * log(1000, 10) + 10)
+                      )
+
+
+ ui = fluidPage(
+   titlePanel("Casos confirmados de COVID-19 (suma en el rango de fechas)"),
+   sliderInput(inputId = "fecha", 
+               label = "Fecha", 
+               width = "600px",
+               #value = 30, 
+               #min = 1, 
+               #max = 30
+                          min = as.Date("2020-02-28","%Y-%m-%d"),
+                          max = as.Date("2020-05-01","%Y-%m-%d"),
+                          value = as.Date(c("2020-04-15","2020-04-30")),
+                          timeFormat="%Y-%m-%d"
+               ),
+   plotOutput("barplot_casos", width = "100%", height = 300),   
+   leafletOutput("mapa_casos", width = "100%", height = 600)
+   )
+ 
+ server <- function(input, output, session) {
+   
+   output$mapa_casos <- renderLeaflet({ 
+        m2 
+   })
+   # output$barplot_casos <- renderPlot({
+   #      m2_barplot
+   # })
+
+
+   casos_filtrado <- reactive({
+          #casos_largo[casos_largo$fecha == as.Date(paste("2020-04-", input$fecha, sep="")),]
+          casos_largo[casos_largo$fecha >= input$fecha[1] & casos_largo$fecha <= input$fecha[2],]
+    })
+ 
+    observe({
+        print(paste(input$fecha[1],"-",input$fecha[2]))
+        casos_en_rango <- aggregate(casos ~ estados, data = casos_filtrado(), FUN = "sum")
+        colnames(casos_en_rango) <- c("estados","casos")
+        casos_en_rango <- merge(x = casos, y = casos_en_rango, by = "estados", all.x = TRUE)
+        output$barplot_casos <- renderPlot({
+                        mi_barplot <- barplot(
+                            height = casos_en_rango$casos, 
+                            names.arg = casos_en_rango$ABREVIATURA, 
+                            col = "gray", las = 2,
+                            ylim = c(0, 1.1 * max(casos_en_rango$casos)),
+                            ylab = "Casos confirmados",
+                            main = paste("Nuevos casos confirmados por estado para", input$fecha[1],"-",input$fecha[2])
+                        )
+                        text(x = mi_barplot, y = casos_en_rango$casos + 0.05 * max(casos_en_rango$casos), 
+                                      labels = casos_en_rango$casos, cex = 0.8)
+              })
+        leafletProxy(mapId = "mapa_casos") %>%
+             clearMarkers() %>%
+             addCircleMarkers(
+                         lng = casos_en_rango$Longitud, 
+                         lat = casos_en_rango$Latitud, 
+                         weight = 10 * log(casos_en_rango$casos, 10) + 0.01 * casos_en_rango$casos, 
+                         radius = 0, 
+                         color= "red", stroke = TRUE, fillOpacity = 0.8
+              ) %>%
+              addLabelOnlyMarkers(
+                        lng = casos_en_rango$Longitud, 
+                        lat = casos_en_rango$Latitud, 
+                        label = filterHighLevel(casos_en_rango$casos),
+                        labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T,
+                        style = list("color" = "white","font-size" = "12px"))
+              )       
+    })
+ }
+
+ shinyApp(ui = ui, server = server,  options = list(height = 1100, width = "100%") )
+
+
+```
+
