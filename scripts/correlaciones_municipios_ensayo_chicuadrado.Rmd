@@ -1,0 +1,428 @@
+---
+title: "Ensayo sobre asociación entre COVID-19 en municipios y sus artibutos geográficos"
+author: "Viacheslav Shalisko"
+date: "23/5/2020"
+output: 
+  html_document: 
+    self_contained: true
+---
+
+### Datos fuente sobre COVID-19
+datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> 
+
+#### Elaborado en colaboración con Rocio Castillo, Eduardo Santana, Luis Valdivia
+
+```{r echo=FALSE, warning=FALSE}
+#library(tidyr)
+library(DescTools)
+library(grid)
+library(vcd)
+```
+
+
+```{r echo=FALSE}
+knitr::asis_output(htmltools::htmlPreserve("
+<style>
+@media print
+{
+h1 {page-break-before:always}
+.legend {
+   visble:visible;
+   background:white !important;
+   -webkit-print-color-adjust: exact;
+   opacity: 1;
+  }
+}
+</style>
+"))
+```
+
+```{r echo=FALSE}
+datos <- read.csv("../datos_municipios/MunicipiosVariablesCualitativas_COVID19.csv")
+#dim(datos)
+#str(datos)
+```
+
+```{r echo=FALSE}
+datos[is.na(datos)] <- 0
+datos$CV_0315f <- "Sin casos"
+datos[datos$CV_0315 == 1,"CV_0315f"] <- "Con casos"
+datos$CV_0425f <- "Sin casos"
+datos[datos$CV_0425 == 1,"CV_0425f"] <- "Con casos"
+datos$mpio_carrf <- "Sin carreteras"
+datos$CV_0504f <- "Sin casos"
+datos[datos$CV0504 == 1,"CV_0504f"] <- "Con casos"
+datos[datos$mpio_carr == 1,"mpio_carrf"] <- "Con carreteras"
+datos$ZM_Aeropf <- "Sin aeropuerto"
+datos[datos$ZM_Aerop == 1,"ZM_Aeropf"] <- "Con aeropuerto"
+datos$Litoralf <- "Fuera de litoral"
+datos[datos$Litoral == 1,"Litoralf"] <- "En litoral"
+datos$FrontNf <- "No fronterizo"
+datos[datos$FrontN == 1,"FrontNf"] <- "Frontera norte"
+datos$Mpio_Metrof <- "No-metropolitano"
+datos[datos$Mpio_Metro == 1,"Mpio_Metrof"] <- "Metropolitano"
+datos$P_250f <- "<= 250k"
+datos[datos$P_250 != 1,"P_250f"] <- "> 250k"
+datos$P_500f <- "<= 500k"
+datos[(datos$P_250 != 1) & (datos$P250_500 != 1),"P_500f"] <- "> 500k"
+
+#str(datos)
+```
+
+```{r echo=FALSE}
+prueba_simple <- function (var1, var2, nombre_var1, nombre_var2, nombre_main) {
+      separador <- "---------------------------------------------------------------"
+      ct <- t(table(var1,var2))
+      writeLines(nombre_main)
+      writeLines("Tabla de contingencia")
+      writeLines(separador)
+      print(ct)
+      
+      writeLines(separador)
+      writeLines("razón de productos cruzados (odds ratio)")
+       writeLines(" [(LR+) / (LR-)] o [TP*TN / FN*TN].")
+      writeLines(separador)
+      print(OddsRatio(ct, conf.level = 0.95))
+
+      writeLines(separador)
+      writeLines("Prueba chi-cuadrado sin corrección de Yates")
+      writeLines("H0: variables son independientes; H0 se rechaza en caso que p <= 0.05")
+      writeLines(separador)      
+      print(chisq.test(ct, correct = FALSE))
+      
+      writeLines(separador)
+      writeLines("Prueba chi-cuadrado con corrección de Yates")
+      writeLines(separador)      
+      print(chisq.test(ct, correct = TRUE))
+      
+      writeLines(separador)
+      writeLines("Otras medidas de asociación (phi - grado de asociación)")
+      writeLines(separador)
+      print(assocstats(ct))
+      
+      writeLines(separador)
+      writeLines("Prueba de Fisher (sobre todo util para muestra pequeña de frecuencia ")
+      writeLines("o datos con distribución desigual de frecuancias)")
+      writeLines(separador)
+      print(fisher.test(ct))
+      
+      writeLines(separador)
+      writeLines("Pruega lambda de Goodman y Kruskal (simétrica) - la proporción 
+                 en la que se reduce el error al predecir los valores de cualquiera de 
+                 las dos variables a partir de la tabla de contingencia")
+      writeLines(separador)
+      print(Lambda(ct, direction = "symmetric", conf.level = 0.95))
+      
+      ## forma alternativa (mas simple) de grafica de asociación
+      #assocplot(casos_carr_ct)
+      ## forma alternativa de llamar pruebas
+      #chisq.test(casos_carr$casos, casos_carr$carreteras)
+      #fisher.test(casos_carr$casos, casos_carr$carreteras)      
+
+      writeLines(separador)
+      writeLines("Diagrama de Cohen-Friendly")
+      writeLines(separador)
+      assoc(t(ct), 
+            compress = TRUE, 
+            keep_aspect_ratio = TRUE,
+            shade = TRUE,
+            labeling = labeling_border(set_varnames = list(
+                                               var2 = nombre_var2,
+                                               var1 = nombre_var1)),
+            main = nombre_main
+            )
+      
+
+} 
+```
+
+
+```{r echo=FALSE}
+casos_carr <- data.frame(casos = c(
+              rep("Con casos",102),
+              rep("Con casos",4),
+              rep("Sin casos",1380),
+              rep("Sin casos",1085)
+           ),
+           carreteras = c(
+              rep("Con carretera",102),
+              rep("Sin carretera",4),
+              rep("Con carretera",1380),
+              rep("Sin carretera",1085)
+           )
+)
+
+
+#prueba_simple(
+#  var1 = casos_carr$casos,
+#  var2 = casos_carr$carreteras,
+#  nombre_var1 = "casos COVID-19",
+#  nombre_var2 = "presencia de carreteras",
+#  nombre_main = "Prueba de casos-carreteras para municipios 15 de marzo"
+#)
+
+
+
+
+```
+
+******
+# Municipios con casos 15 de marzo vs. presencia de carreteras
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$mpio_carrf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de carreteras",
+   nombre_main = "Casos-carreteras para municipios 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. presencia de carreteras
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$mpio_carrf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de carreteras",
+   nombre_main = "Casos-carreteras para municipios 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. presencia de carreteras
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$mpio_carrf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de carreteras",
+   nombre_main = "Casos-carreteras para municipios 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. presencia de aeropuertos
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$ZM_Aeropf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de aeropuertos",
+   nombre_main = "Casos-aeropuertos para municipios 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. presencia de carreteras
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$ZM_Aeropf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de aeropuertos",
+   nombre_main = "Casos-aeropuertos para municipios 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. presencia de carreteras
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$ZM_Aeropf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de aeropuertos",
+   nombre_main = "Casos-aeropuertos para municipios 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. presencia de litoral
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$Litoralf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"ubicación en litoral",
+   nombre_main = "Casos-litoral para municipios 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. presencia de litoral
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$Litoralf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"ubicación en litoral",
+   nombre_main = "Casos-litoral para municipios 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. presencia de litoral
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$Litoralf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"ubicación en litoral",
+   nombre_main = "Casos-litoral para municipios 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. presencia de frontera norte
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$FrontNf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"cercanía con frontera",
+   nombre_main = "Casos-frontera para municipios 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. presencia de frontera norte
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$FrontNf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"cercanía con frontera",
+   nombre_main = "Casos-frontera para municipios 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. presencia de frontera norte
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$FrontNf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"cercanía con frontera",
+   nombre_main = "Casos-frontera para municipios 4 de mayo"
+ )
+```
+
+
+******
+# Municipios con casos 15 de marzo vs. municipio metropolitano
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$Mpio_Metrof,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"urbanización",
+   nombre_main = "Casos-metropoli para municipios 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. municipio metropolitano
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$Mpio_Metrof,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"urbanización",
+   nombre_main = "Casos-metropoli para municipios 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. municipio metropolitano
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$Mpio_Metrof,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"urbanización",
+   nombre_main = "Casos-metropoli para municipios 4 de mayo"
+ )
+```
+
+
+******
+# Municipios con casos 15 de marzo vs. número de habitantes (umbral 250k)
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$P_250f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "Casos-población para municipios 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. número de habitantes (umbral 250k)
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$P_250f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "Casos-población para municipios 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. número de habitantes (umbral 250k)
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$P_250f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "Casos-población para municipios 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. número de habitantes (umbral 500k)
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$P_500f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "Casos-población para municipios 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. número de habitantes (umbral 500k)
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$P_500f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "Casos-población para municipios 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. número de habitantes (umbral 500k)
+
+```{r echo=FALSE}
+ prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$P_500f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "Casos-población para municipios 4 de mayo"
+ )
+```

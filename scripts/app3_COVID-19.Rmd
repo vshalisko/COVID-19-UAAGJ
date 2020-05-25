@@ -1,0 +1,358 @@
+---
+title: "Graficos de COVID-19 en México"
+author: "Viacheslav Shalisko (Universidad de Guadalajdara)"
+date: "12/5/2020"
+runtime: shiny
+output:
+  html_document: default
+---
+
+## Casos de COVID-19 en México en periodo entre 28 de febrero y 7 de mayo del 2020 
+### (los datos posteriores a 7 de mayo aun contienen registros parciales)
+
+> Datos fuente sobre los casos fueron descargados desde los sitios web <https://coronavirus.gob.mx/> y de la base de datos de Secretaía de Salud de México <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+(Cada estado esta representado por su capital)
+
+
+```{r echo = FALSE}
+#library(sp)
+library(tidyr)
+library(RColorBrewer)
+library(DescTools)
+#library(leaflet)
+library(shiny)
+```
+
+```{r echo = FALSE}
+knitr::asis_output(htmltools::htmlPreserve("
+<style>
+@media print
+{
+h1 {page-break-before:always}
+.legend {
+   visble:visible;
+   background:white !important;
+   -webkit-print-color-adjust: exact;
+   opacity: 1;
+  }
+}
+</style>
+"))
+```
+
+```{r echo = FALSE}
+estados_a_graficar <- c(2,3,5,9,11,14,15,19,21,25,23,27,30)
+
+miscolores <- function (est) {
+   mapa_de_colores <- data.frame(
+     id = 1:32,
+     ##           1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32  
+     color_br = c(0, 1, 2, 0, 3, 0, 0, 0, 4, 0, 5, 0, 0, 0, 6, 0, 0, 0, 7, 0, 8, 0,11, 0, 9, 0,10, 0, 0,12, 0, 0))
+   
+   sapply(est, function(estados) {
+     if (estados == 14) {
+        return(t_col("black"))
+      } else if (estados == 23) {
+        return(t_col("yellow", percent = 30))
+      } else if (estados %in% estados_a_graficar) {
+        color_id <- mapa_de_colores[mapa_de_colores$id == estados,"color_br"]
+        return(t_col(brewer.pal(n = 12, name = 'Paired')[color_id], percent = 30))
+      } else {
+        return(t_col("lightgray"))
+      }
+     })
+}
+
+t_col <- function(color, percent = 50, name = NULL) {
+  #      color = color name
+  #    percent = % transparency
+  #       name = an optional name for the color
+
+## Get RGB values for named color
+rgb.val <- col2rgb(color)
+
+## Make new color using input color as base and alpha set by transparency
+t.col <- rgb(rgb.val[1], rgb.val[2], rgb.val[3],
+             max = 255,
+             alpha = (100 - percent) * 255 / 100,
+             names = name)
+
+## Save the color
+invisible(t.col)
+}
+```
+
+
+
+```{r echo = FALSE, warning = FALSE}
+## Función para generar leyenda con circulos
+ addLegendCustom <- function(map, title, colors, labels, sizes, position, group, opacity = 0.5) {
+  colorAdditions <- paste0(colors, "; border-radius: 50%; width:", sizes, "px; height:", sizes, "px")
+  labelAdditions <- paste0("<div style='display: inline-block; height: ", 
+                           sizes, "px; margin-top: 4px; line-height: ", sizes, "px;'>", 
+                           labels, "</div>")
+  return(addLegend(map, colors = colorAdditions, 
+                   labels = labelAdditions, opacity = opacity, 
+                   position = position, group = group, title = title))
+ }
+filterHighLevel <- function(labels) {
+  labels[labels < 20] <- ""
+  return(as.character(labels))
+}
+```
+
+```{r echo = FALSE}
+casos <- read.csv("casos_por_estado_por_dia_eventos.csv")
+negativos <- read.csv("pruebas_negativas_por_estado_por_dia_eventos.csv")
+
+casos[casos$ENTIDAD_FEDERATIVA == "VERACRUZ DE IGNACIO DE LA LLAVE","ENTIDAD_FEDERATIVA"] <- "VERACRUZ"
+casos[casos$ENTIDAD_FEDERATIVA == "COAHUILA DE ZARAGOZA","ENTIDAD_FEDERATIVA"] <- "COAHUILA"
+casos[casos$ENTIDAD_FEDERATIVA == "MÉXICO","ENTIDAD_FEDERATIVA"] <- "ESTADO DE MÉXICO"
+casos[casos$ENTIDAD_FEDERATIVA == "MICHOACÁN DE OCAMPO","ENTIDAD_FEDERATIVA"] <- "MICHOACÁN"
+
+#str(casos)
+#str(negativos)
+```
+
+```{r echo = FALSE, warning = FALSE}
+## transformar casos a formato largo
+nombres_cols <- names(casos[,7:dim(casos)[2]])
+casos_largo <- gather(casos, key = "fecha", value = "casos", all_of(nombres_cols))
+
+casos_largo$fecha <- as.Date(
+  substr(casos_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+
+# eliminar casos con conteo negativo (sustituir por 0)
+casos_largo[casos_largo$casos < 0,"casos"] <- 0
+
+
+## transformar pruebas negativas a formato largo
+nombres_cols_1 <- names(negativos[,7:dim(negativos)[2]])
+negativos_largo <- gather(negativos, key = "fecha", value = "negativos", all_of(nombres_cols_1))
+
+negativos_largo$fecha <- as.Date(
+  substr(negativos_largo$fecha, 2, 11),
+  "%Y.%m.%d")
+
+# eliminar pruebas con conteo negativo (sustituir por 0)
+negativos_largo[negativos_largo$negativos < 0,"negativos"] <- 0
+
+
+mi_max_y <- 1.1 * max(casos_largo$casos)
+mi_max_y1 <- 1.1 * max(negativos_largo$negativos)
+
+#str(casos_largo)
+#str(negativos_largo)
+
+casos_pruebas_largo <- merge(x = negativos_largo, 
+                             y = casos_largo[,c("estados","fecha","casos")],
+                             by = c("estados","fecha"),
+                             all.x = TRUE)
+casos_pruebas_largo[is.na(casos_pruebas_largo)] <- 0
+casos_pruebas_largo$pruebas <- casos_pruebas_largo$casos + casos_pruebas_largo$negativos
+#str(casos_pruebas_largo)
+
+
+```
+
+```{r fig.width = 9, fig.height = 8, echo = FALSE}
+
+## Preparar mapa estatica con tamaño de circulos proporcional al número cumulativo de casos
+
+  # casos_seleccion <- casos_largo[casos_largo$fecha == as.Date("2020-05-01"),]
+  # 
+  # m1 <- leaflet()
+  # m1 <- addTiles(m1)
+  # m1 <- setView(m1, lng=-101, lat=24, zoom = 5)
+  # m1 <- addCircleMarkers(m1, 
+  #                        lng = casos_seleccion$Longitud, 
+  #                        lat = casos_seleccion$Latitud, 
+  #                        weight = 10 * log(casos_seleccion$casos, 10) + 0.01 * casos_seleccion$casos, 
+  #                        radius = 0, 
+  #                        color= "red", stroke = TRUE, fillOpacity = 0.8)
+  #m1
+```
+
+
+```{r fig.width = 9, echo = FALSE, warning = FALSE}
+
+ ## Mapa inicial
+ # m2 <- m1
+ # 
+ # 
+ # m2 <- addLegendCustom(m2, 
+ #                      title = "COVID-19",
+ #                      group = "leyenda",
+ #                      position = "bottomleft",
+ #                      colors = c("red", "red", "red", "red"), 
+ #                      labels = c("20", "50", "200", "1000"), 
+ #                      sizes = c(
+ #                                10 * log(20, 10) + 0.2, 
+ #                                10 * log(50, 10) + 0.5, 
+ #                                10 * log(200, 10) + 2,
+ #                                10 * log(1000, 10) + 10)
+ #                      )
+
+
+ ## Interface de usuario para aplicación Shiny
+ ui = fluidPage(
+   titlePanel("Evolución de COVID-19 por estados"),
+   sliderInput(inputId = "fecha", 
+               label = "Fecha (elige el rango y/o inicia animación por día)", 
+               width = "800px",
+               #value = 30, 
+               #min = 1, 
+               #max = 30
+                          min = as.Date("2020-02-28","%Y-%m-%d"),
+                          max = as.Date("2020-05-07","%Y-%m-%d"),
+                          value = as.Date(c("2020-04-20","2020-05-04")),
+                          timeFormat="%Y-%m-%d",
+                          animate = animationOptions(interval = 500, loop = TRUE)               
+               ),
+   plotOutput("plot_pruebas_casos",width = "100%", height = 800),
+   plotOutput("barplot_duplicacion", width = "100%", height = 500),   
+   plotOutput("barplot_casos", width = "100%", height = 500),
+   plotOutput("barplot_pruebas", width = "100%", height = 500),
+ #  leafletOutput("mapa_casos", width = "100%", height = 600)
+   )
+ 
+ ## Servidor de contenido para aplicación Shiny
+ server <- function(input, output, session) {
+   
+   # output$mapa_casos <- renderLeaflet({ 
+   #      m2 
+   # })
+   # # output$barplot_casos <- renderPlot({
+   # #      m2_barplot
+   # # })
+
+
+   casos_filtrado <- reactive({
+          #casos_largo[casos_largo$fecha == as.Date(paste("2020-04-", input$fecha, sep="")),]
+          casos_pruebas_largo[casos_pruebas_largo$fecha >= input$fecha[1] & casos_pruebas_largo$fecha <= input$fecha[2],]
+   })
+   casos_filtrado1 <- reactive({
+          casos_pruebas_largo[casos_pruebas_largo$fecha <= input$fecha[2],]
+   })
+   
+ 
+   
+    observe({
+        print(paste(input$fecha[1],"-",input$fecha[2]))
+        casos_en_rango <- aggregate(casos ~ estados, data = casos_filtrado(), FUN = "sum")
+        colnames(casos_en_rango) <- c("estados","casos")
+        casos_acumulado <- aggregate(casos ~ estados, data = casos_filtrado1(), FUN = "sum")
+        colnames(casos_acumulado) <- c("estados","casos_acumulado")        
+        pruebas_en_rango <- aggregate(pruebas ~ estados, data = casos_filtrado(), FUN = "sum")
+        colnames(pruebas_en_rango) <- c("estados","pruebas")
+        pruebas_acumulado <- aggregate(pruebas ~ estados, data = casos_filtrado1(), FUN = "sum")
+        colnames(pruebas_acumulado) <- c("estados","pruebas_acumulado")  
+        casos_en_rango <- merge(x = casos[,c("estados","ENTIDAD_FEDERATIVA","ABREVIATURA","Poblacion")], 
+                                y = casos_en_rango, by = "estados", all.x = TRUE)
+        casos_en_rango <- merge(x = casos_en_rango, y = pruebas_en_rango, by = "estados", all.x = TRUE)
+        casos_en_rango <- merge(x = casos_en_rango, y = casos_acumulado, by = "estados", all.x = TRUE)      
+        casos_en_rango <- merge(x = casos_en_rango, y = pruebas_acumulado, by = "estados", all.x = TRUE)
+        casos_en_rango$casos_inicio <- casos_en_rango$casos_acumulado - casos_en_rango$casos
+        casos_en_rango$tiempo_de_duplicacion <- as.numeric(input$fecha[2] - input$fecha[1]) * log(2) /
+                                    (log(casos_en_rango$casos_acumulado) - log(casos_en_rango$casos_inicio))
+        casos_en_rango[!is.finite(casos_en_rango$tiempo_de_duplicacion),"tiempo_de_duplicacion"] <- 0
+        #str(casos_en_rango)
+        
+        output$barplot_casos <- renderPlot({
+                        par(mar = c(11, 6, 4, 2))          
+                        mi_barplot <- barplot(
+                            height = casos_en_rango$casos,
+                            names.arg = casos_en_rango$ABREVIATURA,
+                            col = "coral", las = 2,
+                            ylim = c(0, 1.1 * max(casos_en_rango$casos)),
+                            ylab = "Casos confirmados en periodo",
+                            main = paste("Nuevos casos de COVID-19 confirmados por estado para", input$fecha[1],"-",input$fecha[2])
+                        )
+                        text(x = mi_barplot, y = casos_en_rango$casos 
+                                      + 0.05 * max(casos_en_rango$casos),
+                                      labels = casos_en_rango$casos, cex = 0.8)
+        })
+        output$barplot_pruebas <- renderPlot({
+                        par(mar = c(11, 6, 4, 2))          
+                        mi_barplot2 <- barplot(
+                            height = casos_en_rango$pruebas,
+                            names.arg = casos_en_rango$ABREVIATURA,
+                            col = "lightblue", las = 2,
+                            ylim = c(0, 1.1 * max(casos_en_rango$pruebas)),
+                            ylab = "Pruebas realizadas en periodo",
+                            main = paste("Nuevas pruebas con resultado por estado para", input$fecha[1],"-",input$fecha[2])
+                        )
+                        text(x = mi_barplot2, y = casos_en_rango$pruebas 
+                                      + 0.05 * max(casos_en_rango$pruebas),
+                                      labels = casos_en_rango$pruebas, cex = 0.8)
+        })    
+        output$barplot_duplicacion <- renderPlot({
+                        par(mar = c(11, 6, 4, 2))
+                        mi_barplot3 <- barplot(
+                            height = casos_en_rango$tiempo_de_duplicacion,
+                            names.arg = casos_en_rango$ABREVIATURA,
+                            col = "yellow", las = 2,
+                            ylim = c(0, 1.1 * max(casos_en_rango$tiempo_de_duplicacion)),
+                            ylab = "Tiempo de duplicación (días)",
+                            main = paste("Tiempo de duplicación por estado para", input$fecha[1],"-",input$fecha[2])
+                        )
+                        text(x = mi_barplot3, y = casos_en_rango$tiempo_de_duplicacion 
+                                      + 0.05 * max(casos_en_rango$tiempo_de_duplicacion),
+                                      labels = round(casos_en_rango$tiempo_de_duplicacion,1), cex = 0.8)
+        })         
+        output$plot_pruebas_casos <- renderPlot({
+                        #mi_x <- 100000 * casos_en_rango$pruebas / casos_en_rango$Poblacion
+                        mi_x <- 100000 * casos_en_rango$pruebas_acumulado / casos_en_rango$Poblacion
+                        ## tamaño de burbujas proporcional a numero total de casos por 100 k
+                        mi_z <- 100000 * casos_en_rango$casos_acumulado / casos_en_rango$Poblacion
+                        #mi_y <- 100000 * casos_en_rango$casos_acumulado / casos_en_rango$Poblacion
+                        mi_y <- casos_en_rango$tiempo_de_duplicacion
+                        par(cex = 1.2)
+                        mi_plot <- PlotBubble(
+                          x = mi_x,
+                          y = mi_y,
+                          area = 1 * mi_z + 2,
+                          col = miscolores(casos_en_rango$estados),
+                          border = NA,
+                          xlim = c(0,250), ylim = c(0,30),
+                          #xlab = "nuevas pruebas por 100k habitantes",
+                          xlab = "cumulativo de pruebas por 100k habitantes",
+                          #ylab = "nuevas casos COVID-19 por 100k habitatnes"
+                          ylab = "tiempo de duplicación (días)",
+                          #col = "blue", pch = 19, cex = 1.5
+                          main = c(
+                            paste("Tiempo de duplicación y casos por estado para", input$fecha[1],"-",input$fecha[2]),
+                            "Tamaño de circulos es proporcional al número total de casos confirmados"
+                          )
+                          
+                        )  
+                        text(x = mi_x, y = mi_y, labels = casos_en_rango$ABREVIATURA
+                              )
+        })
+        # leafletProxy(mapId = "mapa_casos") %>%
+        #      clearMarkers() %>%
+        #      addCircleMarkers(
+        #                  lng = casos_en_rango$Longitud, 
+        #                  lat = casos_en_rango$Latitud, 
+        #                  weight = 10 * log(casos_en_rango$casos, 10) + 0.01 * casos_en_rango$casos, 
+        #                  radius = 0, 
+        #                  color= "red", stroke = TRUE, fillOpacity = 0.8
+        #       ) %>%
+        #       addLabelOnlyMarkers(
+        #                 lng = casos_en_rango$Longitud, 
+        #                 lat = casos_en_rango$Latitud, 
+        #                 label = filterHighLevel(casos_en_rango$casos),
+        #                 labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T,
+        #                 style = list("color" = "white","font-size" = "12px"))
+        #       )       
+    })
+ }
+ 
+ ## Aplicación
+ shinyApp(ui = ui, server = server,  options = list(height = 2500, width = "100%") )
+
+
+```
+
+Graficos elaborados en RStudio con tecnologías *Shiny*
