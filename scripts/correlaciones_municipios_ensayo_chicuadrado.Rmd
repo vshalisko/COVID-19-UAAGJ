@@ -17,6 +17,7 @@ datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
 library(DescTools)
 library(grid)
 library(vcd)
+library(knitr)
 ```
 
 
@@ -38,6 +39,8 @@ h1 {page-break-before:always}
 ```
 
 ```{r echo=FALSE}
+
+## lectura de tabla con registros por municipio
 datos <- read.csv("../datos_municipios/MunicipiosVariablesCualitativas_COVID19.csv")
 #dim(datos)
 #str(datos)
@@ -65,30 +68,43 @@ datos$P_250f <- "<= 250k"
 datos[datos$P_250 != 1,"P_250f"] <- "> 250k"
 datos$P_500f <- "<= 500k"
 datos[(datos$P_250 != 1) & (datos$P250_500 != 1),"P_500f"] <- "> 500k"
+datos$P_100f <- "<= 100k"
+datos[datos$PTEE_2020 > 100000,"P_100f"] <- "> 100k"
 
 #str(datos)
 ```
 
 ```{r echo=FALSE}
+
+
 prueba_simple <- function (var1, var2, nombre_var1, nombre_var2, nombre_main) {
+      resultado <- list()
+      resultado$nombre_var1 <- nombre_var1
+      resultado$nombre_var2 <- nombre_var2
+      resultado$nombre_main <- nombre_main
       separador <- "---------------------------------------------------------------"
       ct <- t(table(var1,var2))
       writeLines(nombre_main)
       writeLines("Tabla de contingencia")
       writeLines(separador)
       print(ct)
+      resultado$ct <- ct
       
       writeLines(separador)
       writeLines("razón de productos cruzados (odds ratio)")
-       writeLines(" [(LR+) / (LR-)] o [TP*TN / FN*TN].")
+      writeLines(" [(LR+) / (LR-)] o [TP*TN / FN*TN].")
       writeLines(separador)
-      print(OddsRatio(ct, conf.level = 0.95))
+      or <- OddsRatio(ct, conf.level = 0.95)
+      print(or)
+      resultado$or <- or
 
       writeLines(separador)
       writeLines("Prueba chi-cuadrado sin corrección de Yates")
       writeLines("H0: variables son independientes; H0 se rechaza en caso que p <= 0.05")
-      writeLines(separador)      
-      print(chisq.test(ct, correct = FALSE))
+      writeLines(separador)
+      chi2 <- chisq.test(ct, correct = FALSE)
+      print(chi2)
+      resultado$chi2 <- chi2
       
       writeLines(separador)
       writeLines("Prueba chi-cuadrado con corrección de Yates")
@@ -98,7 +114,9 @@ prueba_simple <- function (var1, var2, nombre_var1, nombre_var2, nombre_main) {
       writeLines(separador)
       writeLines("Otras medidas de asociación (phi - grado de asociación)")
       writeLines(separador)
-      print(assocstats(ct))
+      ac <- assocstats(ct)
+      print(ac)
+      resultado$ac <- ac
       
       writeLines(separador)
       writeLines("Prueba de Fisher (sobre todo util para muestra pequeña de frecuencia ")
@@ -122,7 +140,9 @@ prueba_simple <- function (var1, var2, nombre_var1, nombre_var2, nombre_main) {
       writeLines(separador)
       writeLines("Diagrama de Cohen-Friendly")
       writeLines(separador)
-      assoc(t(ct), 
+
+
+      assoc(ct, 
             compress = TRUE, 
             keep_aspect_ratio = TRUE,
             shade = TRUE,
@@ -131,8 +151,8 @@ prueba_simple <- function (var1, var2, nombre_var1, nombre_var2, nombre_main) {
                                                var1 = nombre_var1)),
             main = nombre_main
             )
-      
 
+      return(resultado)
 } 
 ```
 
@@ -158,7 +178,7 @@ casos_carr <- data.frame(casos = c(
 #  var2 = casos_carr$carreteras,
 #  nombre_var1 = "casos COVID-19",
 #  nombre_var2 = "presencia de carreteras",
-#  nombre_main = "Prueba de casos-carreteras para municipios 15 de marzo"
+#  nombre_main = "Prueba de casos-carreteras 15 de marzo"
 #)
 
 
@@ -166,40 +186,45 @@ casos_carr <- data.frame(casos = c(
 
 ```
 
+```{r echo=FALSE}
+#mis_resultados_df <- data.frame()
+```
+
+
 ******
 # Municipios con casos 15 de marzo vs. presencia de carreteras
 
 ```{r echo=FALSE}
- prueba_simple(
+t1_0315 <- prueba_simple(
    var1 = datos$CV_0315f,
    var2 = datos$mpio_carrf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"presencia de carreteras",
-   nombre_main = "Casos-carreteras para municipios 15 de marzo"
+   nombre_main = "Casos-carreteras 15 de marzo"
  )
 ```
 
 # Municipios con casos 25 de abril vs. presencia de carreteras
 
 ```{r echo=FALSE}
- prueba_simple(
+t1_0425 <-  prueba_simple(
    var1 = datos$CV_0425f,
    var2 = datos$mpio_carrf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"presencia de carreteras",
-   nombre_main = "Casos-carreteras para municipios 25 de abril"
+   nombre_main = "Casos-carreteras 25 de abril"
  )
 ```
 
 # Municipios con casos 4 de mayo vs. presencia de carreteras
 
 ```{r echo=FALSE}
- prueba_simple(
+t1_0504 <-  prueba_simple(
    var1 = datos$CV_0504f,
    var2 = datos$mpio_carrf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"presencia de carreteras",
-   nombre_main = "Casos-carreteras para municipios 4 de mayo"
+   nombre_main = "Casos-carreteras 4 de mayo"
  )
 ```
 
@@ -207,36 +232,36 @@ casos_carr <- data.frame(casos = c(
 # Municipios con casos 15 de marzo vs. presencia de aeropuertos
 
 ```{r echo=FALSE}
- prueba_simple(
+t2_0315 <-  prueba_simple(
    var1 = datos$CV_0315f,
    var2 = datos$ZM_Aeropf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"presencia de aeropuertos",
-   nombre_main = "Casos-aeropuertos para municipios 15 de marzo"
+   nombre_main = "Casos-aeropuertos 15 de marzo"
  )
 ```
 
 # Municipios con casos 25 de abril vs. presencia de carreteras
 
 ```{r echo=FALSE}
- prueba_simple(
+t2_0425 <-  prueba_simple(
    var1 = datos$CV_0425f,
    var2 = datos$ZM_Aeropf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"presencia de aeropuertos",
-   nombre_main = "Casos-aeropuertos para municipios 25 de abril"
+   nombre_main = "Casos-aeropuertos 25 de abril"
  )
 ```
 
 # Municipios con casos 4 de mayo vs. presencia de carreteras
 
 ```{r echo=FALSE}
- prueba_simple(
+t2_0504 <-  prueba_simple(
    var1 = datos$CV_0504f,
    var2 = datos$ZM_Aeropf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"presencia de aeropuertos",
-   nombre_main = "Casos-aeropuertos para municipios 4 de mayo"
+   nombre_main = "Casos-aeropuertos 4 de mayo"
  )
 ```
 
@@ -244,36 +269,36 @@ casos_carr <- data.frame(casos = c(
 # Municipios con casos 15 de marzo vs. presencia de litoral
 
 ```{r echo=FALSE}
- prueba_simple(
+t3_0315 <-   prueba_simple(
    var1 = datos$CV_0315f,
    var2 = datos$Litoralf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"ubicación en litoral",
-   nombre_main = "Casos-litoral para municipios 15 de marzo"
+   nombre_main = "Casos-litoral 15 de marzo"
  )
 ```
 
 # Municipios con casos 25 de abril vs. presencia de litoral
 
 ```{r echo=FALSE}
- prueba_simple(
+t3_0425 <- prueba_simple(
    var1 = datos$CV_0425f,
    var2 = datos$Litoralf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"ubicación en litoral",
-   nombre_main = "Casos-litoral para municipios 25 de abril"
+   nombre_main = "Casos-litoral 25 de abril"
  )
 ```
 
 # Municipios con casos 4 de mayo vs. presencia de litoral
 
 ```{r echo=FALSE}
- prueba_simple(
+t3_0504 <-   prueba_simple(
    var1 = datos$CV_0504f,
    var2 = datos$Litoralf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"ubicación en litoral",
-   nombre_main = "Casos-litoral para municipios 4 de mayo"
+   nombre_main = "Casos-litoral 4 de mayo"
  )
 ```
 
@@ -281,36 +306,36 @@ casos_carr <- data.frame(casos = c(
 # Municipios con casos 15 de marzo vs. presencia de frontera norte
 
 ```{r echo=FALSE}
- prueba_simple(
+t4_0315 <-   prueba_simple(
    var1 = datos$CV_0315f,
    var2 = datos$FrontNf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"cercanía con frontera",
-   nombre_main = "Casos-frontera para municipios 15 de marzo"
+   nombre_main = "Casos-frontera 15 de marzo"
  )
 ```
 
 # Municipios con casos 25 de abril vs. presencia de frontera norte
 
 ```{r echo=FALSE}
- prueba_simple(
+t4_0425 <-   prueba_simple(
    var1 = datos$CV_0425f,
    var2 = datos$FrontNf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"cercanía con frontera",
-   nombre_main = "Casos-frontera para municipios 25 de abril"
+   nombre_main = "Casos-frontera 25 de abril"
  )
 ```
 
 # Municipios con casos 4 de mayo vs. presencia de frontera norte
 
 ```{r echo=FALSE}
- prueba_simple(
+t4_0504 <-  prueba_simple(
    var1 = datos$CV_0504f,
    var2 = datos$FrontNf,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"cercanía con frontera",
-   nombre_main = "Casos-frontera para municipios 4 de mayo"
+   nombre_main = "Casos-frontera 4 de mayo"
  )
 ```
 
@@ -319,36 +344,73 @@ casos_carr <- data.frame(casos = c(
 # Municipios con casos 15 de marzo vs. municipio metropolitano
 
 ```{r echo=FALSE}
- prueba_simple(
+t5_0315 <-   prueba_simple(
    var1 = datos$CV_0315f,
    var2 = datos$Mpio_Metrof,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"urbanización",
-   nombre_main = "Casos-metropoli para municipios 15 de marzo"
+   nombre_main = "Casos-metropoli 15 de marzo"
  )
 ```
 
 # Municipios con casos 25 de abril vs. municipio metropolitano
 
 ```{r echo=FALSE}
- prueba_simple(
+t5_0425 <-  prueba_simple(
    var1 = datos$CV_0425f,
    var2 = datos$Mpio_Metrof,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"urbanización",
-   nombre_main = "Casos-metropoli para municipios 25 de abril"
+   nombre_main = "Casos-metropoli 25 de abril"
  )
 ```
 
 # Municipios con casos 4 de mayo vs. municipio metropolitano
 
 ```{r echo=FALSE}
- prueba_simple(
+t5_0504 <-   prueba_simple(
    var1 = datos$CV_0504f,
    var2 = datos$Mpio_Metrof,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"urbanización",
-   nombre_main = "Casos-metropoli para municipios 4 de mayo"
+   nombre_main = "Casos-metropoli 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. número de habitantes (umbral 100k)
+
+```{r echo=FALSE}
+t6_0315 <-   prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$P_100f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "Casos-población (100k) 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. número de habitantes (umbral 100k)
+
+```{r echo=FALSE}
+t6_0425 <-   prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$P_100f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "Casos-población (100k) 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. número de habitantes (umbral 100k)
+
+```{r echo=FALSE}
+t6_0504 <-   prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$P_100f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "Casos-población (100k) 4 de mayo"
  )
 ```
 
@@ -357,36 +419,36 @@ casos_carr <- data.frame(casos = c(
 # Municipios con casos 15 de marzo vs. número de habitantes (umbral 250k)
 
 ```{r echo=FALSE}
- prueba_simple(
+t7_0315 <-   prueba_simple(
    var1 = datos$CV_0315f,
    var2 = datos$P_250f,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"habitantes",
-   nombre_main = "Casos-población para municipios 15 de marzo"
+   nombre_main = "Casos-población (250k) 15 de marzo"
  )
 ```
 
 # Municipios con casos 25 de abril vs. número de habitantes (umbral 250k)
 
 ```{r echo=FALSE}
- prueba_simple(
+t7_0425 <-   prueba_simple(
    var1 = datos$CV_0425f,
    var2 = datos$P_250f,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"habitantes",
-   nombre_main = "Casos-población para municipios 25 de abril"
+   nombre_main = "Casos-población (250k) 25 de abril"
  )
 ```
 
 # Municipios con casos 4 de mayo vs. número de habitantes (umbral 250k)
 
 ```{r echo=FALSE}
- prueba_simple(
+t7_0504 <-   prueba_simple(
    var1 = datos$CV_0504f,
    var2 = datos$P_250f,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"habitantes",
-   nombre_main = "Casos-población para municipios 4 de mayo"
+   nombre_main = "Casos-población (250k) 4 de mayo"
  )
 ```
 
@@ -394,35 +456,163 @@ casos_carr <- data.frame(casos = c(
 # Municipios con casos 15 de marzo vs. número de habitantes (umbral 500k)
 
 ```{r echo=FALSE}
- prueba_simple(
+t8_0315 <-   prueba_simple(
    var1 = datos$CV_0315f,
    var2 = datos$P_500f,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"habitantes",
-   nombre_main = "Casos-población para municipios 15 de marzo"
+   nombre_main = "Casos-población (500k) 15 de marzo"
  )
 ```
 
 # Municipios con casos 25 de abril vs. número de habitantes (umbral 500k)
 
 ```{r echo=FALSE}
- prueba_simple(
+t8_0425 <-   prueba_simple(
    var1 = datos$CV_0425f,
    var2 = datos$P_500f,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"habitantes",
-   nombre_main = "Casos-población para municipios 25 de abril"
+   nombre_main = "Casos-población (500k) 25 de abril"
  )
 ```
 
 # Municipios con casos 4 de mayo vs. número de habitantes (umbral 500k)
 
 ```{r echo=FALSE}
- prueba_simple(
+t8_0504 <-   prueba_simple(
    var1 = datos$CV_0504f,
    var2 = datos$P_500f,
    nombre_var1 = "",#"casos COVID-19",
    nombre_var2 = "",#"habitantes",
-   nombre_main = "Casos-población para municipios 4 de mayo"
+   nombre_main = "Casos-población (500k) 4 de mayo"
  )
 ```
+
+
+```{r echo=FALSE}
+#str(t1)
+options(width = 100)
+
+mis_resultados_chi2 <- data.frame(
+   variables = c(
+      t1_0315$nombre_main,
+      t1_0425$nombre_main,
+      t1_0504$nombre_main,
+      t2_0315$nombre_main,
+      t2_0425$nombre_main,
+      t2_0504$nombre_main,
+      t3_0315$nombre_main,
+      t3_0425$nombre_main,
+      t3_0504$nombre_main,
+      t4_0315$nombre_main,
+      t4_0425$nombre_main,
+      t4_0504$nombre_main,
+      t5_0315$nombre_main,
+      t5_0425$nombre_main,
+      t5_0504$nombre_main,
+      t6_0315$nombre_main,
+      t6_0425$nombre_main,
+      t6_0504$nombre_main,
+      t7_0315$nombre_main,
+      t7_0425$nombre_main,
+      t7_0504$nombre_main,
+      t8_0315$nombre_main,
+      t8_0425$nombre_main,
+      t8_0504$nombre_main       
+      ),
+   chi2 = c(
+      t1_0315$chi2$statistic,
+      t1_0425$chi2$statistic,
+      t1_0504$chi2$statistic,
+      t2_0315$chi2$statistic,
+      t2_0425$chi2$statistic,
+      t2_0504$chi2$statistic,
+      t3_0315$chi2$statistic,
+      t3_0425$chi2$statistic,
+      t3_0504$chi2$statistic,
+      t4_0315$chi2$statistic,
+      t4_0425$chi2$statistic,
+      t4_0504$chi2$statistic,
+      t5_0315$chi2$statistic,
+      t5_0425$chi2$statistic,
+      t5_0504$chi2$statistic,
+      t6_0315$chi2$statistic,
+      t6_0425$chi2$statistic,
+      t6_0504$chi2$statistic,
+      t7_0315$chi2$statistic,
+      t7_0425$chi2$statistic,
+      t7_0504$chi2$statistic,
+      t8_0315$chi2$statistic,
+      t8_0425$chi2$statistic,
+      t8_0504$chi2$statistic 
+   ),
+   chi2_p = c(
+      t1_0315$chi2$p.value,
+      t1_0425$chi2$p.value,
+      t1_0504$chi2$p.value,
+      t2_0315$chi2$p.value,
+      t2_0425$chi2$p.value,
+      t2_0504$chi2$p.value,
+      t3_0315$chi2$p.value,
+      t3_0425$chi2$p.value,
+      t3_0504$chi2$p.value,
+      t4_0315$chi2$p.value,
+      t4_0425$chi2$p.value,
+      t4_0504$chi2$p.value,
+      t5_0315$chi2$p.value,
+      t5_0425$chi2$p.value,
+      t5_0504$chi2$p.value,
+      t6_0315$chi2$p.value,
+      t6_0425$chi2$p.value,
+      t6_0504$chi2$p.value,
+      t7_0315$chi2$p.value,
+      t7_0425$chi2$p.value,
+      t7_0504$chi2$p.value,
+      t8_0315$chi2$p.value,
+      t8_0425$chi2$p.value,
+      t8_0504$chi2$p.value
+   ),
+   phi = c(
+      t1_0315$ac$phi,
+      t1_0425$ac$phi,
+      t1_0504$ac$phi,
+      t2_0315$ac$phi,
+      t2_0425$ac$phi,
+      t2_0504$ac$phi,
+      t3_0315$ac$phi,
+      t3_0425$ac$phi,
+      t3_0504$ac$phi,
+      t4_0315$ac$phi,
+      t4_0425$ac$phi,
+      t4_0504$ac$phi,
+      t5_0315$ac$phi,
+      t5_0425$ac$phi,
+      t5_0504$ac$phi,
+      t6_0315$ac$phi,
+      t6_0425$ac$phi,
+      t6_0504$ac$phi,
+      t7_0315$ac$phi,
+      t7_0425$ac$phi,
+      t7_0504$ac$phi,
+      t8_0315$ac$phi,
+      t8_0425$ac$phi,
+      t8_0504$ac$phi
+      
+   )
+)
+
+
+
+kable(mis_resultados_chi2, 
+      caption = paste("Tabla. Pruebas de asociación y no-independencia en todos municipios"),
+      align = 'lccc', row.names = FALSE, 
+      digits = c(1,4,8,4),
+      format.args = list(scientific = FALSE),
+      col.names = c("Variables","Chi-cuadrado","valor p","Phi")
+      )
+
+write.csv(mis_resultados_chi2, file = "municipios_todos.csv")
+
+```
+
