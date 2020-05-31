@@ -1,0 +1,739 @@
+---
+title: "Ensayo sobre asociación entre COVID-19 en municipios y sus artibutos geográficos"
+author: "Viacheslav Shalisko"
+date: "23/5/2020"
+output: 
+  html_document: 
+    self_contained: true
+---
+
+### Datos fuente sobre COVID-19
+datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> 
+
+#### Elaborado en colaboración con Rocio Castillo, Eduardo Santana, Luis Valdivia
+
+```{r echo=FALSE, warning=FALSE}
+#library(tidyr)
+library(DescTools)
+library(grid)
+library(vcd)
+library(knitr)
+```
+
+
+```{r echo=FALSE}
+knitr::asis_output(htmltools::htmlPreserve("
+<style>
+@media print
+{
+h1 {page-break-before:always}
+.legend {
+   visble:visible;
+   background:white !important;
+   -webkit-print-color-adjust: exact;
+   opacity: 1;
+  }
+}
+</style>
+"))
+```
+
+```{r echo=FALSE}
+
+## lectura de tabla con registros por municipio
+datos <- read.csv("../datos_municipios/MunicipiosVariablesCualitativas_COVID19.csv")
+#dim(datos)
+#str(datos)
+```
+
+```{r echo=FALSE}
+datos[is.na(datos)] <- 0
+datos$CV_0315f <- "Sin casos"
+datos[datos$CV_0315 == 1,"CV_0315f"] <- "Con casos"
+datos$CV_0425f <- "Sin casos"
+datos[datos$CV_0425 == 1,"CV_0425f"] <- "Con casos"
+datos$mpio_carrf <- "Sin carreteras"
+datos$CV_0504f <- "Sin casos"
+datos[datos$CV0504 == 1,"CV_0504f"] <- "Con casos"
+datos[datos$mpio_carr == 1,"mpio_carrf"] <- "Con carreteras"
+datos$ZM_Aeropf <- "Sin aeropuerto"
+datos[datos$ZM_Aerop == 1,"ZM_Aeropf"] <- "Con aeropuerto"
+datos$Litoralf <- "Fuera de litoral"
+datos[datos$Litoral == 1,"Litoralf"] <- "En litoral"
+datos$FrontNf <- "No-fronterizo"
+datos[datos$FrontN == 1,"FrontNf"] <- "Frontera norte"
+datos$Mpio_Metrof <- "No-metropolitano"
+datos[datos$Mpio_Metro == 1,"Mpio_Metrof"] <- "Metropolitano"
+datos$P_250f <- "<= 250k"
+datos[datos$P_250 != 1,"P_250f"] <- "> 250k"
+datos$P_500f <- "<= 500k"
+datos[(datos$P_250 != 1) & (datos$P250_500 != 1),"P_500f"] <- "> 500k"
+datos$P_100f <- "<= 100k"
+datos[datos$PTEE_2020 > 100000,"P_100f"] <- "> 100k"
+
+#str(datos)
+```
+
+```{r echo=FALSE}
+
+plot_table <- function(d, colors, marginColor, main="", text.cex= 1.0) {
+   plot(c(-1,ncol(d)),c(0,nrow(d)+1), type="n", xaxt="n", yaxt="n", xlab="",ylab="",main=main, bty="n")
+   
+   for (c in 1:ncol(d)) {
+      rect(c-1, nrow(d), c, nrow(d) + 1, col=marginColor)
+      text(c-.5,nrow(d) +.5,colnames(d)[c], cex=text.cex)
+   }
+   
+   for (r in 1:nrow(d)) {
+      rect(-1, r-1, 0, r, col=marginColor)
+      text(-.5, r-.5,rownames(d)[nrow(d) - r + 1], cex=text.cex)
+   }
+   
+   for (r in 1:nrow(d))
+   for (c in 1:ncol(d)) {
+      rect(c-1, r-1, c, r, col=colors[nrow(d) - r + 1,c])
+      text(c-.5,r-.5,d[nrow(d) - r + 1,c], cex= 1.2 * text.cex)
+   }
+}
+
+prueba_simple <- function (var1, var2, nombre_var1, nombre_var2, nombre_main) {
+      resultado <- list()
+      resultado$nombre_var1 <- nombre_var1
+      resultado$nombre_var2 <- nombre_var2
+      resultado$nombre_main <- nombre_main
+      separador <- "---------------------------------------------------------------"
+      ct <- t(table(var1,var2))
+      writeLines(nombre_main)
+      writeLines("Tabla de contingencia")
+      writeLines(separador)
+      print(ct)
+      resultado$ct <- ct
+      
+      writeLines(separador)
+      writeLines("razón de productos cruzados (odds ratio)")
+      writeLines(" [(LR+) / (LR-)] o [TP*TN / FN*TN].")
+      writeLines(separador)
+      or <- OddsRatio(ct, conf.level = 0.95)
+      print(or)
+      resultado$or <- or
+
+      writeLines(separador)
+      writeLines("Prueba chi-cuadrado sin corrección de Yates")
+      writeLines("H0: variables son independientes; H0 se rechaza en caso que p <= 0.05")
+      writeLines(separador)
+      chi2 <- chisq.test(ct, correct = FALSE)
+      print(chi2)
+      resultado$chi2 <- chi2
+      
+      writeLines(separador)
+      writeLines("Prueba chi-cuadrado con corrección de Yates")
+      writeLines(separador)      
+      print(chisq.test(ct, correct = TRUE))
+      
+      writeLines(separador)
+      writeLines("Otras medidas de asociación (phi - grado de asociación)")
+      writeLines(separador)
+      ac <- assocstats(ct)
+      print(ac)
+      resultado$ac <- ac
+      
+      writeLines(separador)
+      writeLines("Prueba de Fisher (sobre todo util para muestra pequeña de frecuencia ")
+      writeLines("o datos con distribución desigual de frecuancias)")
+      writeLines(separador)
+      ft <- fisher.test(ct)
+      print(ft)
+      resultado$ft <- ft
+      
+      writeLines(separador)
+      writeLines("Pruega lambda de Goodman y Kruskal (simétrica) - la proporción 
+                 en la que se reduce el error al predecir los valores de cualquiera de 
+                 las dos variables a partir de la tabla de contingencia")
+      writeLines(separador)
+      lambdat <- Lambda(ct, direction = "symmetric", conf.level = 0.95)
+      resultado$lambda <- lambdat
+      print(lambdat)
+      
+      ## forma alternativa (mas simple) de grafica de asociación
+      #assocplot(casos_carr_ct)
+      ## forma alternativa de llamar pruebas
+      #chisq.test(casos_carr$casos, casos_carr$carreteras)
+      #fisher.test(casos_carr$casos, casos_carr$carreteras)      
+
+      writeLines(separador)
+      writeLines("Diagrama de Cohen-Friendly")
+      writeLines(separador)
+
+
+
+      ### tabla y valores de asociación
+      par(mfrow = c(1,2), cex = 1.2, mar = c(1,1,1,1), oma=c(0,0,2,0)) 
+      colors <- matrix(sapply(ct, function(x) ifelse(x < 50, "gray80","gray70")), ncol = ncol(ct))      
+      plot_table(ct, 
+                 colors = colors, 
+                 marginColor = "gray100" ,
+                 #main = paste("Tabla de contingencia",nombre_main, "2020"), 
+                 text.cex = 0.8)
+      ## dibujar grafica sin datos
+      plot(1,1, type = "n",
+           ylim = c(0,100), xlim = c(0,100),
+           ylab = "", xlab = "",
+           axes = FALSE
+           )
+      
+      if (min(resultado$chi2$expected) > 5 ) {
+         ## chi-cuadrado aplicable
+         text(10, 90, adj = 0, label = "Prueba exacta de Fisher")
+         
+         ## dar formato a valor p
+         pfexpon <- floor(log10(resultado$ft$p.value))
+         if (pfexpon < -4) {
+            pfbase = round(resultado$ft$p.value * 10^( -1 * pfexpon ), 2)
+            text(10, 80, adj = 0,
+               label = bquote( italic("p") ~"=" ~ .(pfbase)%.%"10"^{.(pfexpon)} )
+            )  
+         } else {
+            text(10, 80, adj = 0,
+               label = bquote( italic("p") ~"=" ~ .(round(resultado$ft$p.value, 5)) )
+            )
+         }    
+         
+         text(10, 70, adj = 0, label = "Prueba chi-cuadrado de Pearson")
+         text(10, 60, adj = 0,
+            label = bquote( italic(chi^{2}) ~"=" ~ .(round(resultado$chi2$statistic,0)) )
+         )
+         ## dar formato a valor p         
+         pcexpon <- floor(log10(resultado$chi2$p.value))
+         if (pcexpon < -4) {
+            pcbase = round(resultado$chi2$p.value * 10^( -1 * pcexpon ), 2)
+            text(10, 50, adj = 0,
+               label = bquote( italic("p") ~"=" ~ .(pcbase)%.%"10"^{.(pcexpon)} )
+            )  
+         } else {
+            text(10, 50, adj = 0,
+               label = bquote( italic("p") ~"=" ~ .(round(resultado$chi2$p.value, 5)) )
+            )
+         }    
+         
+         text(10, 40, adj = 0,
+            label = bquote( italic(phi) ~"=" ~ .(round(resultado$ac$phi,3)) )
+         )           
+         
+         ## Afirmación sobre H0 o H1
+         if (resultado$chi2$p.value < 0.05) {
+             text(10, 30, adj = 0,
+                 labels = expression( "Variables presentan asociación (H"*""[1]*")" )
+            )           
+         } else {
+            text(10, 30, adj = 0,
+                 labels = expression( "Variables son independientes (H"*""[0]*")" )
+            )
+         }
+         
+      } else {
+         ## chi-cuadrado no-aplicable
+         text(10, 90, adj = 0, label = "Prueba exacta de Fisher")    
+
+         ## dar formato a valor p
+         pfexpon <- floor(log10(resultado$ft$p.value))
+         if (pfexpon < -4) {
+            pfbase = round(resultado$ft$p.value * 10^( -1 * pfexpon ), 2)
+            text(10, 80, adj = 0,
+               label = bquote( italic("p") ~"=" ~ .(pfbase)%.%"10"^{.(pfexpon)} )
+            )  
+         } else {
+            text(10, 80, adj = 0,
+               label = bquote( italic("p") ~"=" ~ .(round(resultado$ft$p.value, 4)) )
+            )
+         }    
+         ## Afirmación sobre H0 o H1
+         if (resultado$ft$p.value < 0.05) {
+             text(10, 70, adj = 0,
+                 labels = expression( "Variables presentan asociación (H"*""[1]*")" )
+            )           
+         } else {
+            text(10, 70, adj = 0,
+                 labels = expression( "Variables son independientes (H"*""[0]*")" )
+            )
+         }         
+
+      }
+      mtext(paste("Tabla de contingencia",nombre_main, "2020")
+            , line=0, side=3, outer=TRUE, cex=2)
+
+      par(mfrow = c(1,1), mar = c(1,1,1,1), oma=c(0,0,0,0))       
+      assoc(ct, 
+            compress = TRUE, 
+            keep_aspect_ratio = TRUE,
+            shade = TRUE,
+            labeling = labeling_border(set_varnames = list(
+                                               var2 = nombre_var2,
+                                               var1 = nombre_var1)),
+            main = "Diagrama Cohen-Friendly"#nombre_main
+      )
+      
+      #str(resultado$chi2$p.value)      
+      return(resultado)
+} 
+```
+
+
+```{r echo=FALSE}
+casos_carr <- data.frame(casos = c(
+              rep("Con casos",102),
+              rep("Con casos",4),
+              rep("Sin casos",1380),
+              rep("Sin casos",1085)
+           ),
+           carreteras = c(
+              rep("Con carretera",102),
+              rep("Sin carretera",4),
+              rep("Con carretera",1380),
+              rep("Sin carretera",1085)
+           )
+)
+
+
+#prueba_simple(
+#  var1 = casos_carr$casos,
+#  var2 = casos_carr$carreteras,
+#  nombre_var1 = "casos COVID-19",
+#  nombre_var2 = "presencia de carreteras",
+#  nombre_main = "Prueba de casos-carreteras 15 de marzo"
+#)
+
+
+
+
+```
+
+```{r echo=FALSE}
+#mis_resultados_df <- data.frame()
+```
+
+
+******
+# Municipios con casos 15 de marzo vs. presencia de carreteras
+
+```{r echo=FALSE, fig.width = 10}
+t1_0315 <- prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$mpio_carrf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de carreteras",
+   nombre_main = "casos-carreteras 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. presencia de carreteras
+
+```{r echo=FALSE, fig.width = 10}
+t1_0425 <-  prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$mpio_carrf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de carreteras",
+   nombre_main = "casos-carreteras 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. presencia de carreteras
+
+```{r echo=FALSE, fig.width = 10}
+t1_0504 <-  prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$mpio_carrf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de carreteras",
+   nombre_main = "casos-carreteras 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. presencia de aeropuertos
+
+```{r echo=FALSE, fig.width = 10}
+t2_0315 <-  prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$ZM_Aeropf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de aeropuertos",
+   nombre_main = "casos-aeropuertos 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. presencia de carreteras
+
+```{r echo=FALSE, fig.width = 10}
+t2_0425 <-  prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$ZM_Aeropf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de aeropuertos",
+   nombre_main = "casos-aeropuertos 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. presencia de carreteras
+
+```{r echo=FALSE, fig.width = 10}
+t2_0504 <-  prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$ZM_Aeropf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"presencia de aeropuertos",
+   nombre_main = "casos-aeropuertos 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. presencia de litoral
+
+```{r echo=FALSE, fig.width = 10}
+t3_0315 <-   prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$Litoralf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"ubicación en litoral",
+   nombre_main = "casos-litoral 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. presencia de litoral
+
+```{r echo=FALSE, fig.width = 10}
+t3_0425 <- prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$Litoralf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"ubicación en litoral",
+   nombre_main = "casos-litoral 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. presencia de litoral
+
+```{r echo=FALSE, fig.width = 10}
+t3_0504 <-   prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$Litoralf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"ubicación en litoral",
+   nombre_main = "casos-litoral 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. presencia de frontera norte
+
+```{r echo=FALSE, fig.width = 10}
+t4_0315 <-   prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$FrontNf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"cercanía con frontera",
+   nombre_main = "casos-frontera 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. presencia de frontera norte
+
+```{r echo=FALSE, fig.width = 10}
+t4_0425 <-   prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$FrontNf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"cercanía con frontera",
+   nombre_main = "casos-frontera 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. presencia de frontera norte
+
+```{r echo=FALSE, fig.width = 10}
+t4_0504 <-  prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$FrontNf,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"cercanía con frontera",
+   nombre_main = "casos-frontera 4 de mayo"
+ )
+```
+
+
+******
+# Municipios con casos 15 de marzo vs. municipio metropolitano
+
+```{r echo=FALSE, fig.width = 10}
+t5_0315 <-   prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$Mpio_Metrof,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"urbanización",
+   nombre_main = "casos-metropoli 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. municipio metropolitano
+
+```{r echo=FALSE, fig.width = 10}
+t5_0425 <-  prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$Mpio_Metrof,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"urbanización",
+   nombre_main = "casos-metropoli 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. municipio metropolitano
+
+```{r echo=FALSE, fig.width = 10}
+t5_0504 <-   prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$Mpio_Metrof,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"urbanización",
+   nombre_main = "casos-metropoli 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. número de habitantes (umbral 100k)
+
+```{r echo=FALSE, fig.width = 10}
+t6_0315 <-   prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$P_100f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "casos-población (100k) 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. número de habitantes (umbral 100k)
+
+```{r echo=FALSE, fig.width = 10}
+t6_0425 <-   prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$P_100f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "casos-población (100k) 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. número de habitantes (umbral 100k)
+
+```{r echo=FALSE, fig.width = 10}
+t6_0504 <-   prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$P_100f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "casos-población (100k) 4 de mayo"
+ )
+```
+
+
+******
+# Municipios con casos 15 de marzo vs. número de habitantes (umbral 250k)
+
+```{r echo=FALSE, fig.width = 10}
+t7_0315 <-   prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$P_250f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "casos-población (250k) 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. número de habitantes (umbral 250k)
+
+```{r echo=FALSE, fig.width = 10}
+t7_0425 <-   prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$P_250f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "casos-población (250k) 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. número de habitantes (umbral 250k)
+
+```{r echo=FALSE, fig.width = 10}
+t7_0504 <-   prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$P_250f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "casos-población (250k) 4 de mayo"
+ )
+```
+
+******
+# Municipios con casos 15 de marzo vs. número de habitantes (umbral 500k)
+
+```{r echo=FALSE, fig.width = 10}
+t8_0315 <-   prueba_simple(
+   var1 = datos$CV_0315f,
+   var2 = datos$P_500f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "casos-población (500k) 15 de marzo"
+ )
+```
+
+# Municipios con casos 25 de abril vs. número de habitantes (umbral 500k)
+
+```{r echo=FALSE, fig.width = 10}
+t8_0425 <-   prueba_simple(
+   var1 = datos$CV_0425f,
+   var2 = datos$P_500f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "casos-población (500k) 25 de abril"
+ )
+```
+
+# Municipios con casos 4 de mayo vs. número de habitantes (umbral 500k)
+
+```{r echo=FALSE, fig.width = 10}
+t8_0504 <-   prueba_simple(
+   var1 = datos$CV_0504f,
+   var2 = datos$P_500f,
+   nombre_var1 = "",#"casos COVID-19",
+   nombre_var2 = "",#"habitantes",
+   nombre_main = "casos-población (500k) 4 de mayo"
+ )
+```
+
+
+```{r echo=FALSE}
+#str(t1)
+options(width = 100)
+
+mis_resultados_chi2 <- data.frame(
+   variables = c(
+      t1_0315$nombre_main,
+      t1_0425$nombre_main,
+      t1_0504$nombre_main,
+      t2_0315$nombre_main,
+      t2_0425$nombre_main,
+      t2_0504$nombre_main,
+      t3_0315$nombre_main,
+      t3_0425$nombre_main,
+      t3_0504$nombre_main,
+      t4_0315$nombre_main,
+      t4_0425$nombre_main,
+      t4_0504$nombre_main,
+      t5_0315$nombre_main,
+      t5_0425$nombre_main,
+      t5_0504$nombre_main,
+      t6_0315$nombre_main,
+      t6_0425$nombre_main,
+      t6_0504$nombre_main,
+      t7_0315$nombre_main,
+      t7_0425$nombre_main,
+      t7_0504$nombre_main,
+      t8_0315$nombre_main,
+      t8_0425$nombre_main,
+      t8_0504$nombre_main       
+      ),
+   chi2 = c(
+      t1_0315$chi2$statistic,
+      t1_0425$chi2$statistic,
+      t1_0504$chi2$statistic,
+      t2_0315$chi2$statistic,
+      t2_0425$chi2$statistic,
+      t2_0504$chi2$statistic,
+      t3_0315$chi2$statistic,
+      t3_0425$chi2$statistic,
+      t3_0504$chi2$statistic,
+      t4_0315$chi2$statistic,
+      t4_0425$chi2$statistic,
+      t4_0504$chi2$statistic,
+      t5_0315$chi2$statistic,
+      t5_0425$chi2$statistic,
+      t5_0504$chi2$statistic,
+      t6_0315$chi2$statistic,
+      t6_0425$chi2$statistic,
+      t6_0504$chi2$statistic,
+      t7_0315$chi2$statistic,
+      t7_0425$chi2$statistic,
+      t7_0504$chi2$statistic,
+      t8_0315$chi2$statistic,
+      t8_0425$chi2$statistic,
+      t8_0504$chi2$statistic 
+   ),
+   chi2_p = c(
+      t1_0315$chi2$p.value,
+      t1_0425$chi2$p.value,
+      t1_0504$chi2$p.value,
+      t2_0315$chi2$p.value,
+      t2_0425$chi2$p.value,
+      t2_0504$chi2$p.value,
+      t3_0315$chi2$p.value,
+      t3_0425$chi2$p.value,
+      t3_0504$chi2$p.value,
+      t4_0315$chi2$p.value,
+      t4_0425$chi2$p.value,
+      t4_0504$chi2$p.value,
+      t5_0315$chi2$p.value,
+      t5_0425$chi2$p.value,
+      t5_0504$chi2$p.value,
+      t6_0315$chi2$p.value,
+      t6_0425$chi2$p.value,
+      t6_0504$chi2$p.value,
+      t7_0315$chi2$p.value,
+      t7_0425$chi2$p.value,
+      t7_0504$chi2$p.value,
+      t8_0315$chi2$p.value,
+      t8_0425$chi2$p.value,
+      t8_0504$chi2$p.value
+   ),
+   phi = c(
+      t1_0315$ac$phi,
+      t1_0425$ac$phi,
+      t1_0504$ac$phi,
+      t2_0315$ac$phi,
+      t2_0425$ac$phi,
+      t2_0504$ac$phi,
+      t3_0315$ac$phi,
+      t3_0425$ac$phi,
+      t3_0504$ac$phi,
+      t4_0315$ac$phi,
+      t4_0425$ac$phi,
+      t4_0504$ac$phi,
+      t5_0315$ac$phi,
+      t5_0425$ac$phi,
+      t5_0504$ac$phi,
+      t6_0315$ac$phi,
+      t6_0425$ac$phi,
+      t6_0504$ac$phi,
+      t7_0315$ac$phi,
+      t7_0425$ac$phi,
+      t7_0504$ac$phi,
+      t8_0315$ac$phi,
+      t8_0425$ac$phi,
+      t8_0504$ac$phi
+      
+   )
+)
+
+
+
+kable(mis_resultados_chi2, 
+      caption = paste("Tabla. Pruebas de asociación y no-independencia en todos municipios"),
+      align = 'lccc', row.names = FALSE, 
+      digits = c(1,4,8,4),
+      format.args = list(scientific = FALSE),
+      col.names = c("Variables","Chi-cuadrado","valor p","Phi")
+      )
+
+write.csv(mis_resultados_chi2, file = "municipios_todos.csv")
+
+```
+
