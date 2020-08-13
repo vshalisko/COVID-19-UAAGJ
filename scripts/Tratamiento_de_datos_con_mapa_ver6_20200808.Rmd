@@ -24,6 +24,8 @@ Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-15
 ```{r echo = FALSE}
 library(htmltools)
 library(DT)
+library(MASS)
+library(R0)
 #library(leaflet)
 #library(sp)
 
@@ -287,15 +289,43 @@ uci_nac <- apply(datos_estado[,uci_fechas], 2 , sum)
 
 
 ### Casos de COVID-19 confirmados a nivel nacional
-##### Total de casos registrados para el día `r fecha_formato`: `r casos_nac[1]`. 
-##### Aumento de casos desde ayer: `r casos_nac[1] - casos_nac[2]` (`r round(100 * (casos_nac[1] - casos_nac[2]) / casos_nac[2], 2)`%). 
-##### Aumento durante la última semana (desde `r fecha_formato - 7` hasta `r fecha_formato`): `r casos_nac[1] - casos_nac[8]` (`r `%).
-##### Aumento durante la semana anterior `r ` (`r `%).
-##### Aumento durante las últimas dos semanas `r ` (`r `%).
+##### Total de casos registrados para el día `r fecha_formato`: **`r casos_nac[1]`**. 
+##### Aumento de casos desde ayer: **`r casos_nac[1] - casos_nac[2]`** (**`r round(100 * (casos_nac[1] - casos_nac[2]) / casos_nac[2], 2)`%**). 
+##### Aumento durante la última semana (desde `r fecha_formato - 7` hasta `r fecha_formato`): **`r casos_nac[1] - casos_nac[8]`** (**`r round(100 * (casos_nac[1] - casos_nac[8]) / casos_nac[8], 2)`%**).
+##### Aumento durante la semana anterior (desde `r fecha_formato - 15` hasta `r fecha_formato - 8`): **`r casos_nac[8] - casos_nac[15]`** (**`r round(100 * (casos_nac[8] - casos_nac[15]) / casos_nac[15], 2)`%**).
+##### Aumento durante las últimas dos semanas (desde `r fecha_formato - 15` hasta `r fecha_formato`): **`r casos_nac[1] - casos_nac[15]`** (**`r round(100 * (casos_nac[1] - casos_nac[15]) / casos_nac[15], 2)`%**).
 
 ### Resumen de casos confirmados por estado
 
-```{r echo = FALSE}
+```{r datos-para-tabla, echo = FALSE}
+## por 100k habitantes
+datos_estado$casos_hoy100k <- round(100000 * datos_estado[,casos_fechas[1]] / datos_estado$Poblacion, 2)
+
+## tiempo de duplicación ultimas dos semanas
+datos_estado$dupl_2sem <- round(14 * log(2) / ((log(datos_estado[,casos_fechas[1]]) - log(datos_estado[,casos_fechas[15]]))),2)
+```
+
+```{r restimacionRt, echo = FALSE}
+my_GT <- generation.time("gamma", c(4, 2), truncate = 14)
+
+Rt_estado <- c()
+for (i in 1:32) {
+  my_t <- data.frame(t = fecha_formato - seq(0, n))
+  my_casos <- t(datos_estado[i,casos_fechas])  
+  my_R0 <- est.R0.SB(epid = my_casos[n:1,1], my_GT, t = my_t[n:1,"t"], nsim = 100, time.step = 1)
+  #print(my_R0$R[13])
+  #print(my_R0$conf.int$CI.lower[13])
+  #print(my_R0$conf.int$CI.upper[13])
+  Rt_estado <-  c(Rt_estado, my_R0$R[13])
+}
+
+
+datos_estado <- cbind(datos_estado, data.frame(Rt = Rt_estado))
+
+```
+
+
+```{r tabla-html, echo = FALSE}
 #DT:::available_plugins()
 
 dt_spanish_json <- '
@@ -329,8 +359,9 @@ dt_spanish_json <- '
 }
 '
 
-DT::datatable(datos_estado[,c("Estado", "casos200806", "casos200807", "casos200808")], 
-         colnames = c("Estados","Casos ayer","Casos hoy"),
+DT::datatable(datos_estado[,c("Estado", casos_fechas[15], casos_fechas[8], casos_fechas[2], casos_fechas[1], 
+                              "casos_hoy100k", "dupl_2sem", "Rt")], 
+         colnames = c("Estados","Hace 2 semanas","Hace 1 semana","Ayer","Hoy","Por 100k","Tiempo de duplicación","Rt"),
          extensions = c('FixedColumns',"FixedHeader","Buttons"),
          class = 'cell-border stripe',
           options = list(scrollX = TRUE, 
@@ -464,9 +495,10 @@ knitr::asis_output(htmltools::htmlPreserve(cc_html))
 
 
 
-## Pruebas (quedara excluido del producto final)
+
 
 ```{r echo = FALSE}
+## Pruebas (quedara excluido del producto final)
 #plot(datos_estado[,casos_fechas], type = "l", lty = 1)
-plot(apply(datos_estado[,casos_fechas], 2 , sum), type = "b")
+#plot(apply(datos_estado[,casos_fechas], 2 , sum), type = "b")
 ```
