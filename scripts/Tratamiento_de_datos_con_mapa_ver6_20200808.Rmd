@@ -1,0 +1,472 @@
+---
+title: "Tratamiento datos COVID-19 México 08/08/2020"
+author: "Shalisko V., Santana E., Castillo Aja R., Valdivia Ornelas L."
+date: "08/08/2020"
+output:
+  html_document: 
+    css: mystyle.css
+---
+
+```{r variables-ajustables, echo = FALSE}
+fecha <- "8 de agosto del 2020"
+fecha_formato <- "2020-08-08"
+```
+
+#### Última actualización `r fecha`
+#### Authores: Shalisko V., Santana E., Castillo Aja R., Valdivia Ornelas L.
+#### Versión 6.0
+#### Datos fuente
+Datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Fuentes auxiliares
+Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> y Catálogo Único de Claves de Áreas Geoestadísticas Estatales, Municipales y Localidades de INEGI <https://www.inegi.org.mx/app/ageeml/>
+
+```{r echo = FALSE}
+library(htmltools)
+library(DT)
+#library(leaflet)
+#library(sp)
+
+## numero de dias al pasado que se consideraran (además del dia de fecha)
+n <- 14
+
+## Codigo HTML para boton de Creative Commons 
+cc_html <- '<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a>.'
+```
+
+```{css, echo=FALSE}
+```
+
+```{r auxiliares, echo = FALSE}
+estados <- read.csv("../datos/Catalogos_0412_ENTIDADES.csv")
+poblacion_estados <- read.csv("../datos/Poblacion_01.csv", stringsAsFactors = FALSE)
+poblacion_estados$Poblacion <- as.numeric(poblacion_estados$Poblacion)
+#str(poblacion_estados)
+
+## tabla base estados
+tb_estados <- merge(x = estados, y = poblacion_estados, by.x = "CLAVE_ENTIDAD", by.y = "ID")
+#dim(tb_estados)
+#str(tb_estados)
+
+municipios <- read.csv("../datos/Catalogos_0412_MUNICIPIOS.csv", stringsAsFactors = FALSE)
+#str(municipios)
+#dim(municipios)
+municipios2 <- read.csv("../datos/catalogo_municipios.csv", stringsAsFactors = FALSE)
+#str(municipios2)
+#dim(municipios2)
+
+## tabla base municipios
+tb_municipios <- merge(x = municipios, y = municipios2,
+                        all.x = TRUE, all.y = TRUE,
+                        by.x = c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO"), 
+                        by.y = c("Cve_Ent","Cve_Mun"))
+tb_municipios <- merge(x = tb_municipios, y = tb_estados[,c("CLAVE_ENTIDAD","ABREVIATURA")], 
+                       by = "CLAVE_ENTIDAD", all.x = TRUE)
+tb_municipios$Clave_Mun_Ent_Texto <- as.numeric(as.character(tb_municipios$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(tb_municipios$CLAVE_ENTIDAD))
+tb_municipios$Clave_Mun_Ent_Texto <- sprintf("%05d", tb_municipios$Clave_Mun_Ent_Texto)
+```
+
+```{r subrutinas, echo = FALSE}
+
+fecha_formato <- as.Date(fecha_formato)
+
+fecha_cadena <- function(mi_f) {
+  ## Como esxtraer partes de fecha
+  ## dia
+  #as.POSIXlt(fecha_formato)$mday
+  ## mes
+  #as.POSIXlt(fecha_formato)$mon + 1
+  ## año
+  #as.POSIXlt(fecha_formato)$year + 1900
+    
+  mi_cadena <- paste0(  
+    sprintf("%02d", as.POSIXlt(mi_f)$year - 100),
+    sprintf("%02d", as.POSIXlt(mi_f)$mon + 1),
+    sprintf("%02d", as.POSIXlt(mi_f)$mday)
+  )
+  return(mi_cadena)
+}
+
+file_by_date <- function (mi_f) {
+  ## funcion regresa nombre del archivo con ruta basandose en su fecha
+  ## prefijo de ruta
+  mi_pr <- "../datos/"
+  ## postfijo de ruta
+  mi_po <- "COVID19MEXICO.csv"
+  mi_file <- paste0(mi_pr, fecha_cadena(mi_f), mi_po)
+  return(mi_file)
+}
+
+casos_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos positivos por estado
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1,]$ENTIDAD_RES))
+  mi_columna <- paste0("casos", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+casos_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos positivos por municipio
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1,]$ENTIDAD_RES,mi_datos[mi_datos$RESULTADO == 1,]$MUNICIPIO_RES))
+  mi_columna <- paste0("casos", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+neg_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos negativos por estado
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 2,]$ENTIDAD_RES))
+  mi_columna <- paste0("neg", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+neg_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos negativos por municipio
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 2,]$ENTIDAD_RES,mi_datos[mi_datos$RESULTADO == 2,]$MUNICIPIO_RES))
+  mi_columna <- paste0("neg", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+pend_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos pendientes por estado
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 3,]$ENTIDAD_RES))
+  mi_columna <- paste0("pend", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+pend_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos pendientes por municipio
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 3,]$ENTIDAD_RES,mi_datos[mi_datos$RESULTADO == 3,]$MUNICIPIO_RES))
+  mi_columna <- paste0("pend", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+def_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos defuntos por estado
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]$ENTIDAD_RES))
+  mi_columna <- paste0("def", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+def_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos defuntos por municipio
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]$ENTIDAD_RES,
+                                  mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]$MUNICIPIO_RES))
+  mi_columna <- paste0("def", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+hosp_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos hospitalizados por estado (acumulativo)
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]$ENTIDAD_RES))
+  mi_columna <- paste0("hosp", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+hosp_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos hospitalizados por municipio (acumulativo)
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]$ENTIDAD_RES,
+                                  mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]$MUNICIPIO_RES))
+  mi_columna <- paste0("hosp", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+uci_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos en uci por estado (acumulativo)
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]$ENTIDAD_RES))
+  mi_columna <- paste0("uci", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+uci_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos en uci por municipio (acumulativo)
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]$ENTIDAD_RES,
+                                  mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]$MUNICIPIO_RES))
+  mi_columna <- paste0("uci", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+```
+
+# ANALISIS MÉXICO
+## Casos positivos de COVID-19 por fecha de reporte
+
+```{r datos, echo = FALSE, cache = TRUE}
+## lectura de datos por dia y construcción de tablas
+## hacer tabla de inicio con nombres de estados
+datos_estado <- tb_estados
+## hacer tabla de inicio con nombres de estados
+datos_municipio <- tb_municipios
+
+## construir tabla registros por estado durante el periodo deseable
+for(i in 0:n) {
+  ## construir fecha
+  fecha_d <- fecha_formato - i
+  
+  ## lectura del archivo CSV
+  d <- read.csv(file_by_date(fecha_d))
+  
+  ## por estado
+  positivos_d <- casos_est(d, fecha_d)
+  negativos_d <- neg_est(d, fecha_d)
+  pendientes_d <- pend_est(d, fecha_d)
+  defunciones_d <- def_est(d, fecha_d)
+  hospitalizados_d <- hosp_est(d, fecha_d)
+  uci_d <- uci_est(d, fecha_d)  
+  datos_estado <- merge(x = datos_estado, y = positivos_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = negativos_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = pendientes_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = defunciones_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = hospitalizados_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = uci_d, by = "CLAVE_ENTIDAD", all.x = TRUE)  
+  
+  ## por municipio
+  positivosm_d <- casos_mun(d, fecha_d)
+  negativosm_d <- neg_mun(d, fecha_d)
+  pendientesm_d <- pend_mun(d, fecha_d)
+  defuncionesm_d <- def_mun(d, fecha_d)
+  hospitalizadosm_d <- hosp_mun(d, fecha_d)
+  ucim_d <- uci_mun(d, fecha_d)
+  datos_municipio <- merge(x = datos_municipio, y = positivosm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = negativosm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = pendientesm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = defuncionesm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = hospitalizadosm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = ucim_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  
+  ## cerrar el archivo CSV
+  d <- NULL
+}
+```
+
+```{r echo = FALSE}
+#str(datos_estado)
+#str(datos_municipio)
+```
+
+
+```{r sybtotales, echo = FALSE}
+casos_fechas <- paste0("casos",fecha_cadena(fecha_formato - seq(0, n)))
+neg_fechas <- paste0("neg",fecha_cadena(fecha_formato - seq(0, n)))
+pend_fechas <- paste0("pend",fecha_cadena(fecha_formato - seq(0, n)))
+def_fechas <- paste0("def",fecha_cadena(fecha_formato - seq(0, n)))
+hosp_fechas <- paste0("hosp",fecha_cadena(fecha_formato - seq(0, n)))
+uci_fechas <- paste0("uci",fecha_cadena(fecha_formato - seq(0, n)))
+
+#datos_estado[,c("Estado",casos_fechas)]
+#datos_estado[,c("Estado",neg_fechas)]
+#datos_estado[,c("Estado",pend_fechas)]
+#datos_estado[,c("Estado",def_fechas)]
+#datos_estado[,c("Estado",hosp_fechas)]
+#datos_estado[,c("Estado",uci_fechas)]
+
+casos_nac <- apply(datos_estado[,casos_fechas], 2 , sum)
+neg_nac <- apply(datos_estado[,neg_fechas], 2 , sum)
+pend_nac <- apply(datos_estado[,pend_fechas], 2 , sum)
+def_nac <- apply(datos_estado[,def_fechas], 2 , sum)
+hosp_nac <- apply(datos_estado[,hosp_fechas], 2 , sum)
+uci_nac <- apply(datos_estado[,uci_fechas], 2 , sum)
+```
+
+
+### Casos de COVID-19 confirmados a nivel nacional
+##### Total de casos registrados para el día `r fecha_formato`: `r casos_nac[1]`. 
+##### Aumento de casos desde ayer: `r casos_nac[1] - casos_nac[2]` (`r round(100 * (casos_nac[1] - casos_nac[2]) / casos_nac[2], 2)`%). 
+##### Aumento durante la última semana (desde `r fecha_formato - 7` hasta `r fecha_formato`): `r casos_nac[1] - casos_nac[8]` (`r `%).
+##### Aumento durante la semana anterior `r ` (`r `%).
+##### Aumento durante las últimas dos semanas `r ` (`r `%).
+
+### Resumen de casos confirmados por estado
+
+```{r echo = FALSE}
+#DT:::available_plugins()
+
+dt_spanish_json <- '
+{
+	"sProcessing":     "Procesando...",
+	"sLengthMenu":     "Mostrar _MENU_ registros",
+	"sZeroRecords":    "No se encontraron resultados",
+	"sEmptyTable":     "Ningún dato disponible en esta tabla",
+	"sInfo":           "Mostrando registros del _START_ al _END_ de un total de _TOTAL_ registros",
+	"sInfoEmpty":      "Mostrando registros del 0 al 0 de un total de 0 registros",
+	"sInfoFiltered":   "(filtrado de un total de _MAX_ registros)",
+	"sInfoPostFix":    "",
+	"sSearch":         "Buscar:",
+	"sUrl":            "",
+	"sInfoThousands":  ",",
+	"sLoadingRecords": "Cargando...",
+	"oPaginate": {
+		"sFirst":    "Primero",
+		"sLast":     "Último",
+		"sNext":     "Siguiente",
+		"sPrevious": "Anterior"
+	},
+	"oAria": {
+		"sSortAscending":  ": Activar para ordenar la columna de manera ascendente",
+		"sSortDescending": ": Activar para ordenar la columna de manera descendente"
+	},
+	"buttons": {
+	              "print": "Imprimir",
+                "printTitle": "Imprimir"
+	}
+}
+'
+
+DT::datatable(datos_estado[,c("Estado", "casos200806", "casos200807", "casos200808")], 
+         colnames = c("Estados","Casos ayer","Casos hoy"),
+         extensions = c('FixedColumns',"FixedHeader","Buttons"),
+         class = 'cell-border stripe',
+          options = list(scrollX = TRUE, 
+                         paging=TRUE,
+                         fixedHeader=TRUE,
+                         dom = 'Bfrtip',
+                         buttons = c('csv','print'),
+                         #language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json'),
+                         language = JS(dt_spanish_json),
+                         pageLength = 10
+                         ))
+```
+
+### Histogramas de total y aumento de casos positivos por estado {.tabset}
+#### Aumento desde ayer
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 4, 4, 2))
+
+cpen_ymax <- 1.1 * max(datos_estado[,casos_fechas[1]])
+
+cpen_barplot <- barplot(height = datos_estado[,casos_fechas[1]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        main = paste("Casos de COVID-19 acumulados por estado para", fecha_formato, "y aumento desde el día anterior"))
+
+barplot(height = datos_estado[,casos_fechas[2]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado[,casos_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = datos_estado[,casos_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = datos_estado[,casos_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_estado[,casos_fechas[1]] - datos_estado[,casos_fechas[2]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos registrados el dia anterior", "aumento"),
+      fill = c("gray","red"))
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Durante la última semana
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 4, 4, 2))
+
+cpen_ymax <- 1.1 * max(datos_estado[,casos_fechas[1]])
+
+cpen_barplot <- barplot(height = datos_estado[,casos_fechas[1]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        main = paste("Casos de COVID-19 acumulados por estado para", fecha_formato, "y aumento desde", fecha_formato - 7))
+
+barplot(height = datos_estado[,casos_fechas[8]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado[,casos_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = datos_estado[,casos_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = datos_estado[,casos_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_estado[,casos_fechas[1]] - datos_estado[,casos_fechas[8]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos registrados hace una semana", "aumento en la última semana"),
+      fill = c("gray","red"))
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Durante la semana pasada
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 4, 4, 2))
+
+cpen_ymax <- 1.1 * max(datos_estado[,casos_fechas[8]])
+
+cpen_barplot <- barplot(height = datos_estado[,casos_fechas[8]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        main = paste("Casos de COVID-19 acumulados por estado para", fecha_formato - 7, "y aumento desde", fecha_formato - 15))
+
+barplot(height = datos_estado[,casos_fechas[15]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado[,casos_fechas[8]] + 0.05 * cpen_ymax, 
+     labels = datos_estado[,casos_fechas[8]], cex = 0.7)
+text(x = cpen_barplot, y = datos_estado[,casos_fechas[8]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_estado[,casos_fechas[8]] - datos_estado[,casos_fechas[15]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos hace dos semanas", "aumento en la semana anterior"),
+      fill = c("gray","red"))
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### En últimas dos semanas
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 4, 4, 2))
+
+cpen_ymax <- 1.1 * max(datos_estado[,casos_fechas[1]])
+
+cpen_barplot <- barplot(height = datos_estado[,casos_fechas[1]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        main = paste("Casos de COVID-19 acumulados por estado para", fecha_formato, "y aumento desde", fecha_formato - 15))
+
+barplot(height = datos_estado[,casos_fechas[15]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado[,casos_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = datos_estado[,casos_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = datos_estado[,casos_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_estado[,casos_fechas[1]] - datos_estado[,casos_fechas[15]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos hace dos semanas", "aumento en dos semanas"),
+      fill = c("gray","red"))
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+
+```{r echo = FALSE}
+
+```
+
+
+
+## Pruebas (quedara excluido del producto final)
+
+```{r echo = FALSE}
+#plot(datos_estado[,casos_fechas], type = "l", lty = 1)
+plot(apply(datos_estado[,casos_fechas], 2 , sum), type = "b")
+```
