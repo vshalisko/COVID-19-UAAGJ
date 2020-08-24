@@ -1,6 +1,6 @@
 ---
 title: "Tratamiento datos COVID-19 Jalisco 21/08/2020"
-author: "Shalisko V., Santana E., Castillo Aja R., Valdivia Ornelas L."
+author: "Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L."
 date: "21/08/2020"
 output:
   html_document: 
@@ -13,7 +13,7 @@ fecha_formato <- "2020-08-21"
 ```
 
 #### Última actualización `r fecha`
-#### Authores: Shalisko V., Santana E., Castillo Aja R., Valdivia Ornelas L.
+#### Authores: Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L.
 #### Versión 6.0
 #### Datos fuente
 Datos abiertos del Gobierno de Jalisco "RADAR JALISCO" <https://coronavirus.jalisco.gob.mx/bases-de-datos/>
@@ -69,115 +69,10 @@ file_by_date <- function (mi_f) {
   return(mi_file)
 }
 
-# casos_est <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos positivos por estado
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1,]$ENTIDAD_RES))
-#   mi_columna <- paste0("casos", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
-#   return(mi_tabla)
-# }
-# casos_mun <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos positivos por municipio
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1,]$ENTIDAD_RES,mi_datos[mi_datos$RESULTADO == 1,]$MUNICIPIO_RES))
-#   mi_columna <- paste0("casos", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
-#   mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
-#                              1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
-#   mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
-#   return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
-# }
-# neg_est <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos negativos por estado
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 2,]$ENTIDAD_RES))
-#   mi_columna <- paste0("neg", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
-#   return(mi_tabla)
-# }
-# neg_mun <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos negativos por municipio
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 2,]$ENTIDAD_RES,mi_datos[mi_datos$RESULTADO == 2,]$MUNICIPIO_RES))
-#   mi_columna <- paste0("neg", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
-#   mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
-#                              1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
-#   mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
-#   return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
-# }
-# pend_est <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos pendientes por estado
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 3,]$ENTIDAD_RES))
-#   mi_columna <- paste0("pend", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
-#   return(mi_tabla)
-# }
-# pend_mun <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos pendientes por municipio
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 3,]$ENTIDAD_RES,mi_datos[mi_datos$RESULTADO == 3,]$MUNICIPIO_RES))
-#   mi_columna <- paste0("pend", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
-#   mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
-#                              1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
-#   mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
-#   return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
-# }
-# def_est <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos defuntos por estado
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]$ENTIDAD_RES))
-#   mi_columna <- paste0("def", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
-#   return(mi_tabla)
-# }
-# def_mun <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos defuntos por municipio
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]$ENTIDAD_RES,
-#                                   mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]$MUNICIPIO_RES))
-#   mi_columna <- paste0("def", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
-#   mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
-#                              1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
-#   mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
-#   return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
-# }
-# hosp_est <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos hospitalizados por estado (acumulativo)
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]$ENTIDAD_RES))
-#   mi_columna <- paste0("hosp", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
-#   return(mi_tabla)
-# }
-# hosp_mun <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos hospitalizados por municipio (acumulativo)
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]$ENTIDAD_RES,
-#                                   mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]$MUNICIPIO_RES))
-#   mi_columna <- paste0("hosp", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
-#   mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
-#                              1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
-#   mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
-#   return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
-# }
-# uci_est <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos en uci por estado (acumulativo)
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]$ENTIDAD_RES))
-#   mi_columna <- paste0("uci", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
-#   return(mi_tabla)
-# }
-# uci_mun <- function(mi_datos, mi_fecha) {
-#   ## determinar numero da casos en uci por municipio (acumulativo)
-#   mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]$ENTIDAD_RES,
-#                                   mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]$MUNICIPIO_RES))
-#   mi_columna <- paste0("uci", fecha_cadena(mi_fecha))
-#   colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
-#   mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
-#                              1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
-#   mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
-#   return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
-# }
 ```
 
 # ANALISIS JALISCO
-## Casos positivos de COVID-19 por fecha de inicio de sintomas en datos RADAR JALISCO
+## Casos positivos de COVID-19 por fecha de inicio de síntomas en datos RADAR JALISCO
 
 ```{r datos, echo = FALSE}
 ## lectura de datos
@@ -225,12 +120,16 @@ casos_nac <- apply(datos_estado[,casos_fechas], 2 , sum)
 #datos_municipio
 ```
 
+
 ### Casos de COVID-19 confirmados en Jalisco
+
+Nota: Los datos por fecha de aparición de síntomas cuentan con un sesgo durante la semana más reciente. El sesgo está relacionado con el tiempo que pasa entre los síntomas de enfermedad, toma de muestra y recepción del resultado. Es por esto, los valores de aumento durante los días inmediatamente anteriores a la fecha del reporte son sistemáticamente más bajos de lo que realmente son.
+
 ##### Total de casos registrados para el día `r fecha_formato`: **`r format(casos_nac[1],digits = 7)`**. 
-##### Casos con priemros sintomas presentados desde ayer: **`r round(casos_nac[1] - casos_nac[2], 0)`** (**`r round(100 * (casos_nac[1] - casos_nac[2]) / casos_nac[2], 2)`%**). 
-##### Casos con primeros sintomas presentados durante la última semana (desde `r fecha_formato - 7` hasta `r fecha_formato`): **`r format(casos_nac[1] - casos_nac[8], digits = 6)`** (**`r round(100 * (casos_nac[1] - casos_nac[8]) / casos_nac[8], 2)`%**).
-##### Casos con primeros sintomas presentados durante la semana anterior (desde `r fecha_formato - 15` hasta `r fecha_formato - 8`): **`r format(casos_nac[8] - casos_nac[15], digits = 6)`** (**`r round(100 * (casos_nac[8] - casos_nac[15]) / casos_nac[15], 2)`%**).
-##### Casos con primeros sintomas presentados durante las últimas dos semanas (desde `r fecha_formato - 15` hasta `r fecha_formato`): **`r format(casos_nac[1] - casos_nac[15], digits = 6)`** (**`r round(100 * (casos_nac[1] - casos_nac[15]) / casos_nac[15], 2)`%**).
+##### Casos con priemros síntomas presentados desde ayer: **`r round(casos_nac[1] - casos_nac[2], 0)`** (**`r round(100 * (casos_nac[1] - casos_nac[2]) / casos_nac[2], 2)`%**). 
+##### Casos con primeros síntomas presentados durante la última semana (desde `r fecha_formato - 7` hasta `r fecha_formato`): **`r format(casos_nac[1] - casos_nac[8], digits = 6)`** (**`r round(100 * (casos_nac[1] - casos_nac[8]) / casos_nac[8], 2)`%**).
+##### Casos con primeros síntomas presentados durante la semana anterior (desde `r fecha_formato - 15` hasta `r fecha_formato - 8`): **`r format(casos_nac[8] - casos_nac[15], digits = 6)`** (**`r round(100 * (casos_nac[8] - casos_nac[15]) / casos_nac[15], 2)`%**).
+##### Casos con primeros síntomas presentados durante las últimas dos semanas (desde `r fecha_formato - 15` hasta `r fecha_formato`): **`r format(casos_nac[1] - casos_nac[15], digits = 6)`** (**`r round(100 * (casos_nac[1] - casos_nac[15]) / casos_nac[15], 2)`%**).
 
 ### Resumen de casos confirmados por municipios de Jalisco
 
@@ -244,6 +143,7 @@ datos_municipio$aumento_2semt <- paste0(datos_municipio$aumento_2sem," (",datos_
 #datos_municipio$casos_hoy100k <- round(100000 * datos_estado[,casos_fechas[1]] / datos_municipio$Poblacion, 1)
 ## por 100k habitantes
 casos_municipio_a100k <- round(100000 * datos_municipio[,casos_fechas] / datos_municipio$Pob_Municipio, 1)
+datos_municipio$aumento_2sem_a100k <- round(100000 * datos_municipio$aumento_2sem / datos_municipio$Pob_Municipio, 1)
 
 ## tiempo de duplicación ultimas dos semanas
 datos_municipio$dupl_2sem <- round(14 * log(2) / ((log(datos_municipio[,paste0("casos",fecha_cadena(fecha_formato - 15))]) - log(datos_municipio[,paste0("casos",fecha_cadena(fecha_formato - 29))]))),1)
@@ -383,9 +283,12 @@ dt_spanish_json <- '
 	}
 }
 '
-tabla1_pie <- "Tabla 1. Cambios en número acumulado de casos durante las últimas dos semanas,  
-incidencia por 100 mil habitantes, número basico reproductivo (Rt) y tiempo de duplicación (TD)
-dos semanas antes de la fecha del reporte. Nota: el calculo de Rt solo es posible en municipios con significativa acumulacion de casos."
+tabla1_pie <- "Tabla 1. 
+Cambios en número acumulado de casos durante las últimas dos semanas, incidencia por 100 mil habitantes,
+tiempo de duplicación (TD) dos semanas antes de la fecha del reporte y número reproductivo efectivo (Rt) 
+al final de este periodo.
+Nota: el calculo de Rt solo es posible en municipios con significativa acumulacion de casos.
+"
 
 DT::datatable(cbind(
                 datos_municipio[,c("Nom_Mun", casos_fechas[15], casos_fechas[8], casos_fechas[2], casos_fechas[1])],
@@ -394,7 +297,7 @@ DT::datatable(cbind(
                                    )]
               ), 
          colnames = c("Municipios","Hace 2 semanas","Hace 1 semana","Ayer","Hoy",
-                      "Por 100k","Aumento en 2 semanas","TD, dias","Rt"
+                      "Por 100k","Aumento en 2 semanas","TD, días","Rt"
                       ),
          caption = htmltools::tags$caption(tabla1_pie),
          extensions = c('FixedColumns',"FixedHeader","Buttons"),
@@ -430,9 +333,11 @@ casos_municipio_a100k <- casos_municipio_a100k[1:30,]
 ### Histogramas de total y aumento de casos positivos en 30 municipios con mas casos {.tabset}
 
 ```{r echo = FALSE}
-knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 1. Barras grices y números negros representan 
-los el casos acumulado antes de la fecha del analisis de aumento, 
-las barras y números rojos aumento durnte el periodo considerado.</div><br />'))
+knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 1. 
+Barras grises y los números negros muestran 
+los casos acumulados antes de la fecha del análisis del aumento, 
+las barras y números en rojo muestran el aumento durnte el período considerado.
+</div><br />'))
 ```
 
 #### Aumento desde ayer
@@ -459,7 +364,7 @@ text(x = cpen_barplot, y = datos_municipio[,casos_fechas[1]] + 0.02 * cpen_ymax,
        col = "red", cex = 0.6)
 
 legend("topright", horiz = TRUE, bty = "n",
-      legend = c("casos registrados el dia anterior", "aumento"),
+      legend = c("casos registrados el día anterior", "aumento"),
       fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
 
 knitr::asis_output(htmltools::htmlPreserve(cc_html))
@@ -558,9 +463,11 @@ knitr::asis_output(htmltools::htmlPreserve(cc_html))
 ### Histogramas de total y aumento de casos positivos por 100 mil habitantes en 30 municipios con mas casos  {.tabset}
 
 ```{r echo = FALSE}
-knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 2. Barras grices y números negros representan 
-los el casos acumulado antes de la fecha del analisis de aumento, 
-las barras y números rojos aumento durnte el periodo considerado.</div><br />'))
+knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 2. 
+Barras grises y los números negros muestran 
+los casos acumulados antes de la fecha del análisis del aumento, 
+las barras y números en rojo muestran el aumento durnte el período considerado.
+</div><br />'))
 ```
 
 #### Aumento desde ayer
@@ -587,7 +494,7 @@ text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.02 * cpen
        col = "red", cex = 0.6)
 
 legend("topright", horiz = TRUE, bty = "n",
-      legend = c("casos registrados el dia anterior", "aumento"),
+      legend = c("casos registrados el día anterior", "aumento"),
       fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
 
 knitr::asis_output(htmltools::htmlPreserve(cc_html))
@@ -685,10 +592,14 @@ knitr::asis_output(htmltools::htmlPreserve(cc_html))
 
 
 ### Dinámica de casos nuevos en últimas dos semanas en 30 municipios con mas casos {.tabset}
-#### Casos nuevos por dia
 
+```{r echo = FALSE}
+knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 3.</div><br />'))
+```
 
-La secuencia de particiones en las barras corresponde a la lista de municipios por núemero de caso nuevoss durante las útlimas dos semanas.
+#### Casos nuevos por día
+
+La secuencia de particiones en las barras corresponde a la lista de municipios por el núemero de caso nuevos durante las útlimas dos semanas.
 
 ```{r echo = FALSE,  fig.width = 11, fig.height = 8}
 
@@ -766,9 +677,9 @@ knitr::asis_output(htmltools::htmlPreserve(cc_html))
 par(mar = c(12, 4, 4, 2))
 par(mgp=c(3,1,0))
 
-cpen_ymax <- 1.1 * max(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]])
+cpen_ymax <- 1.1 * max(datos_municipio$aumento_2sem_a100k)
 
-cpen_barplot <- barplot(height = round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]],1),
+cpen_barplot <- barplot(height = datos_municipio$aumento_2sem_a100k,
         names.arg = datos_municipio$Nom_Mun, col = "red",
         las = 2, ylim = c(0, cpen_ymax),
         ylab = "aumento de casos COVID-19 por 100 mil habitantes",
@@ -777,8 +688,8 @@ cpen_barplot <- barplot(height = round(casos_municipio_a100k[,casos_fechas[1]] -
 #barplot(height = casos_municipio_a100k[,casos_fechas[15]], col = "gray",
 #                        axes = FALSE, add = TRUE)
 
-text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]] + 0.02 * cpen_ymax,
-     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]],1), sep = ""),
+text(x = cpen_barplot, y = datos_municipio$aumento_2sem_a100k + 0.02 * cpen_ymax,
+     labels = paste("+", round(datos_municipio$aumento_2sem_a100k,1), sep = ""),
      cex = 0.7)
 #text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.02 * cpen_ymax,
 #     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]],1), sep = ""),
@@ -836,7 +747,7 @@ cpen_ymax <- 1.1 * max(datos_municipio$dupl_2sem)
 cpen_barplot <- barplot(height = datos_municipio$dupl_2sem, 
         names.arg = datos_municipio$Nom_Mun, col = "beige",
         las = 2, ylim = c(0, cpen_ymax),
-        ylab = "tiempo de duplicación de número de casos (dias)",
+        ylab = "tiempo de duplicación de número de casos (días)",
         main = paste("Tiempo de duplicación de casos de COVID-19 observado entre", fecha_formato - 30, "y", fecha_formato - 15))
 
 #barplot(height = casos_municipio_a100k[,casos_fechas[15]], col = "gray", 
