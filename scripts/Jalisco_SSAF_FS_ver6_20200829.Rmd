@@ -1,0 +1,843 @@
+---
+title: "Tratamiento datos COVID-19 Jalisco 29/08/2020"
+author: "Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L."
+date: "29/08/2020"
+output:
+  html_document: 
+    css: mystyle.css
+---
+
+```{r variables-ajustables, echo = FALSE}
+fecha <- "29 de agosto del 2020"
+fecha_formato <- "2020-08-29"
+```
+
+#### Última actualización `r fecha`
+#### Authores: Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L.
+#### Versión 6.0
+#### Datos fuente
+Datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Fuentes auxiliares
+Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> y Catálogo Único de Claves de Áreas Geoestadísticas Estatales, Municipales y Localidades de INEGI <https://www.inegi.org.mx/app/ageeml/>
+
+```{r echo = FALSE}
+knitr::opts_chunk$set(error = TRUE)
+library(htmltools)
+library(DT)
+library(MASS)
+library(R0)
+#library(leaflet)
+#library(sp)
+
+## numero de dias al pasado que se consideraran (además del dia de fecha)
+n <- 14
+
+## Codigo HTML para boton de Creative Commons 
+cc_html <- '<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a>.'
+```
+
+
+```{r subrutinas, echo = FALSE}
+
+fecha_formato <- as.Date(fecha_formato)
+
+fecha_cadena <- function(mi_f) {
+  ## Como esxtraer partes de fecha
+  ## dia
+  #as.POSIXlt(fecha_formato)$mday
+  ## mes
+  #as.POSIXlt(fecha_formato)$mon + 1
+  ## año
+  #as.POSIXlt(fecha_formato)$year + 1900
+    
+  mi_cadena <- paste0(  
+    sprintf("%02d", as.POSIXlt(mi_f)$year - 100),
+    sprintf("%02d", as.POSIXlt(mi_f)$mon + 1),
+    sprintf("%02d", as.POSIXlt(mi_f)$mday)
+  )
+  return(mi_cadena)
+}
+
+file_by_date <- function (mi_f) {
+  ## funcion regresa nombre del archivo con ruta basandose en su fecha
+  ## prefijo de ruta
+  mi_pr <- "../datos/"
+  ## postfijo de ruta
+  mi_po <- "COVID19MEXICO.csv"
+  mi_file <- paste0(mi_pr, fecha_cadena(mi_f), mi_po)
+  return(mi_file)
+}
+
+
+```
+
+# ANALISIS JALISCO
+## Casos positivos de COVID-19 por fecha de inicio de síntomas en datos SSA Federal
+
+```{r datos, echo = FALSE}
+## lectura de datos
+## hacer tabla de inicio con nombres de estados
+datos_estado <- readRDS(paste0("object_estado_FS_",fecha_formato,".rds"))
+## hacer tabla de inicio con nombres de estados
+datos_municipio <- readRDS(paste0("object_municipio_FS_",fecha_formato,".rds"))
+```
+
+```{r echo = FALSE}
+datos_estado <- datos_estado[datos_estado$CLAVE_ENTIDAD == 14,]
+## seleccionar solo municipios de Jalisco
+datos_municipio <- datos_municipio[datos_municipio$CLAVE_ENTIDAD == 14,]
+datos_municipio <- datos_municipio[datos_municipio$Nom_Mun != "NO ESPECIFICADO",]
+#str(datos_municipio)
+```
+
+
+
+```{r subtotales, echo = FALSE}
+casos_fechas <- paste0("casos",fecha_cadena(fecha_formato - seq(0, n)))
+neg_fechas <- paste0("neg",fecha_cadena(fecha_formato - seq(0, n)))
+pend_fechas <- paste0("pend",fecha_cadena(fecha_formato - seq(0, n)))
+def_fechas <- paste0("def",fecha_cadena(fecha_formato - seq(0, n)))
+hosp_fechas <- paste0("hosp",fecha_cadena(fecha_formato - seq(0, n)))
+uci_fechas <- paste0("uci",fecha_cadena(fecha_formato - seq(0, n)))
+
+#datos_estado[,c("Estado",casos_fechas)]
+#datos_estado[,c("Estado",neg_fechas)]
+#datos_estado[,c("Estado",pend_fechas)]
+#datos_estado[,c("Estado",def_fechas)]
+#datos_estado[,c("Estado",hosp_fechas)]
+#datos_estado[,c("Estado",uci_fechas)]
+
+casos_nac <- apply(datos_estado[,casos_fechas], 2 , sum)
+neg_nac <- apply(datos_estado[,neg_fechas], 2 , sum)
+pend_nac <- apply(datos_estado[,pend_fechas], 2 , sum)
+def_nac <- apply(datos_estado[,def_fechas], 2 , sum)
+hosp_nac <- apply(datos_estado[,hosp_fechas], 2 , sum)
+uci_nac <- apply(datos_estado[,uci_fechas], 2 , sum)
+```
+
+
+### Casos de COVID-19 confirmados en Jalisco
+
+Nota: Los datos por fecha de aparición de síntomas cuentan con un sesgo durante la semana más reciente. El sesgo está relacionado con el tiempo que pasa entre los síntomas de enfermedad, toma de muestra y recepción del resultado. Es por esto, los valores de aumento durante los días inmediatamente anteriores a la fecha del reporte son sistemáticamente más bajos de lo que realmente son.
+
+##### Total de casos registrados para el día `r fecha_formato`: **`r format(casos_nac[1],digits = 7)`**. 
+##### Casos con priemros síntomas presentados desde ayer: **`r round(casos_nac[1] - casos_nac[2], 0)`** (**`r round(100 * (casos_nac[1] - casos_nac[2]) / casos_nac[2], 2)`%**). 
+##### Casos con primeros síntomas presentados durante la última semana (desde `r fecha_formato - 7` hasta `r fecha_formato`): **`r format(casos_nac[1] - casos_nac[8], digits = 6)`** (**`r round(100 * (casos_nac[1] - casos_nac[8]) / casos_nac[8], 2)`%**).
+##### Casos con primeros síntomas presentados durante la semana anterior (desde `r fecha_formato - 15` hasta `r fecha_formato - 8`): **`r format(casos_nac[8] - casos_nac[15], digits = 6)`** (**`r round(100 * (casos_nac[8] - casos_nac[15]) / casos_nac[15], 2)`%**).
+##### Casos con primeros síntomas presentados durante las últimas dos semanas (desde `r fecha_formato - 15` hasta `r fecha_formato`): **`r format(casos_nac[1] - casos_nac[15], digits = 6)`** (**`r round(100 * (casos_nac[1] - casos_nac[15]) / casos_nac[15], 2)`%**).
+
+### Resumen de casos confirmados por municipios de Jalisco
+
+```{r datos-para-tabla, echo = FALSE}
+datos_municipio$aumento_2sem <- datos_municipio[,casos_fechas[1]] - datos_municipio[,casos_fechas[15]]
+datos_municipio$aumento_2semp <- round(100 * datos_municipio$aumento_2sem / datos_municipio[,casos_fechas[15]],1)
+datos_municipio[is.infinite(datos_municipio$aumento_2semp),"aumento_2semp"] <- 100
+datos_municipio[is.nan(datos_municipio$aumento_2semp),"aumento_2semp"] <- 0
+datos_municipio$aumento_2semt <- paste0(datos_municipio$aumento_2sem," (",datos_municipio$aumento_2semp,"%)")
+
+#datos_municipio$casos_hoy100k <- round(100000 * datos_estado[,casos_fechas[1]] / datos_municipio$Poblacion, 1)
+## por 100k habitantes
+casos_municipio_a100k <- round(100000 * datos_municipio[,casos_fechas] / datos_municipio$Pob_Municipio, 1)
+datos_municipio$aumento_2sem_a100k <- round(100000 * datos_municipio$aumento_2sem / datos_municipio$Pob_Municipio, 1)
+
+## tiempo de duplicación ultimas dos semanas
+datos_municipio$dupl_2sem <- round(14 * log(2) / ((log(datos_municipio[,paste0("casos",fecha_cadena(fecha_formato - 15))]) - log(datos_municipio[,paste0("casos",fecha_cadena(fecha_formato - 29))]))),1)
+
+datos_municipio <- datos_municipio[order(datos_municipio[,casos_fechas[1]], decreasing = TRUE),]
+casos_municipio_a100k <- casos_municipio_a100k[order(datos_municipio[,casos_fechas[1]], decreasing = TRUE),]
+#datos_municipio <- datos_municipio[1:30,]
+```
+
+
+```{r restimacionRt, echo = FALSE, message = FALSE, warning = FALSE}
+## modelo de distribución de contagios
+my_GT <- generation.time("gamma", c(4, 2), truncate = 14)
+
+## numero de dias en secuencia completa
+m <- 100
+
+## sequencia de fechas completa considerada
+casos_fechas_completo <- paste0("casos",fecha_cadena(fecha_formato - 14 - seq(0, m)))
+
+## Calcular incremento diario
+dia <- datos_municipio[,c(casos_fechas_completo)]
+dia_antes <- cbind(datos_municipio[,c(casos_fechas_completo[-1])],data.frame(inicio = rep(0,nrow(datos_municipio))))
+incremento <- dia - dia_antes
+incremento[incremento < 0] <- 0
+incremento[is.na(incremento)] <- 0
+#incremento
+
+Rt_municipio <- c()
+Rt_lower <- c()
+Rt_upper <- c()
+for (i in 1:6) {
+  my_t <- data.frame(t = fecha_formato - seq(0, m))
+  #print(dim(my_t))
+  #print(my_t)
+
+  my_casos <- t(incremento[i,casos_fechas_completo[1:m]])  
+  #print(dim(my_casos))
+  #print(my_casos)
+  
+  ## estimación con el modelo elegido
+  tryCatch({
+    my_R0 <- est.R0.TD(epid = my_casos[m:1,1], n.t0 = my_casos[m,1], my_GT, t = my_t[m:1,"t"], nsim = 500, time.step = 1) 
+    #print(datos_municipio[i,"Nom_Mun"])
+    #plot(my_R0)
+    #str(my_R0) 
+    
+    ## el periodo base para suavisación es 2 semanas, pero en caso que no se puede, se reduce a 3 dias
+    tryCatch({     
+      if (my_R0$end.nb > 14) {
+       smooth_Rt <- smooth.Rt(my_R0, 14)
+      } else {
+       smooth_Rt <- smooth.Rt(my_R0, 3)
+      }    
+      if (length(smooth_Rt$R) > 0) {
+        #Rt_municipio <- c(Rt_municipio, round(tail(smooth_Rt$R, n=1),3))
+        Rt_municipio[i] <- round(tail(smooth_Rt$R, n=1),3)
+        ## en metodo TD intervalos son $lower, en BS intervalo puede ser $CI.lower
+        Rt_lower[i] <-  c(Rt_lower, tail(smooth_Rt$conf.int$lower, n=1))
+        Rt_upper[i] <-  c(Rt_upper, tail(smooth_Rt$conf.int$upper, n=1))
+      } else {
+      #Rt_municipio <-  c(Rt_municipio, 0)
+      Rt_municipio[i] <- 0
+      Rt_lower[i] <-  c(Rt_lower, 0)
+      Rt_upper[i] <-  c(Rt_upper, 0)
+      }
+    }, error = function (e) {
+      Rt_municipio[i] <- 0
+      Rt_lower[i] <-  c(Rt_lower, 0)
+      Rt_upper[i] <-  c(Rt_upper, 0)
+    }
+    )
+  }, error = function(e) {  
+      #Rt_municipio <-  c(Rt_municipio, 0)
+      Rt_municipio[i] <- 0
+      Rt_lower[i] <-  c(Rt_lower, 0)
+      Rt_upper[i] <-  c(Rt_upper, 0)
+  }) 
+  
+  ## plot for test purposes
+  #print(my_R0$end)
+  #print(my_R0$R[my_R0$end.nb - 1])
+  #print(smooth_Rt$R)
+  #print(tail(smooth_Rt$R, n=1))  
+  #my_R0 <- estimate.R(epid = my_casos[20:1,1], my_GT, t = my_t[20:1,"t"], nsim = 100, time.step = 1, methods="SB")
+  #print(str(smooth_Rt))
+  #print(my_R0$conf.int$CI.lower[13])
+  #print(my_R0$conf.int$CI.upper[13])
+  #Rt_estado <-  c(Rt_estado, my_R0$R[13])
+ 
+}
+for (i in 7:nrow(datos_municipio)) {
+      Rt_municipio <-  c(Rt_municipio, NA)
+      Rt_lower <-  c(Rt_lower, NA)
+      Rt_upper <-  c(Rt_upper, NA)  
+}
+  
+
+ datos_municipio <- cbind(datos_municipio, data.frame(Rt = Rt_municipio))
+ datos_municipio <- cbind(datos_municipio, data.frame(Rt_lower = Rt_lower))
+ datos_municipio <- cbind(datos_municipio, data.frame(Rt_upper = Rt_upper))
+
+```
+
+
+
+```{r tabla-html, echo = FALSE}
+#DT:::available_plugins()
+
+dt_spanish_json <- '
+{
+	"sProcessing":     "Procesando...",
+	"sLengthMenu":     "Mostrar _MENU_ registros",
+	"sZeroRecords":    "No se encontraron resultados",
+	"sEmptyTable":     "Ningún dato disponible en esta tabla",
+	"sInfo":           "Mostrando registros del _START_ al _END_ de un total de _TOTAL_ registros",
+	"sInfoEmpty":      "Mostrando registros del 0 al 0 de un total de 0 registros",
+	"sInfoFiltered":   "(filtrado de un total de _MAX_ registros)",
+	"sInfoPostFix":    "",
+	"sSearch":         "Buscar:",
+	"sUrl":            "",
+	"sInfoThousands":  ",",
+	"sLoadingRecords": "Cargando...",
+	"oPaginate": {
+		"sFirst":    "Primero",
+		"sLast":     "Último",
+		"sNext":     "Siguiente",
+		"sPrevious": "Anterior"
+	},
+	"oAria": {
+		"sSortAscending":  ": Activar para ordenar la columna de manera ascendente",
+		"sSortDescending": ": Activar para ordenar la columna de manera descendente"
+	},
+	"buttons": {
+	              "print": "Imprimir",
+                "printTitle": "Imprimir"
+	}
+}
+'
+tabla1_pie <- "Tabla 1. 
+Cambios en número acumulado de casos durante las últimas dos semanas, incidencia por 100 mil habitantes,
+tiempo de duplicación (TD) dos semanas antes de la fecha del reporte y número reproductivo efectivo (Rt) 
+al final de este periodo.
+Nota: el calculo de Rt solo es posible en municipios con significativa acumulacion de casos.
+"
+
+DT::datatable(cbind(
+                datos_municipio[,c("Nom_Mun", casos_fechas[15], casos_fechas[8], casos_fechas[2], casos_fechas[1])],
+                casos_municipio_a100k[,casos_fechas[1]],
+                datos_municipio[,c("aumento_2semt", "dupl_2sem", "Rt"
+                                   )]
+              ), 
+         colnames = c("Municipios","Hace 2 semanas","Hace 1 semana","Ayer","Hoy",
+                      "Por 100k","Aumento en 2 semanas","TD, días","Rt"
+                      ),
+         caption = htmltools::tags$caption(tabla1_pie),
+         extensions = c('FixedColumns',"FixedHeader","Buttons"),
+         class = 'hover cell-border',
+         style = 'default',
+         width = "900px",
+         autoHideNavigation = TRUE,
+
+          options = list(scrollX = FALSE, 
+                         paging=TRUE,
+                         fixedHeader=TRUE,
+                         dom = 'Bfrtip',
+                         buttons = c('csv','print'),
+                         #language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json'),
+                         language = JS(dt_spanish_json),
+                         pageLength = 10,
+                         lengthMenu = c(5, 10, 15, 20),
+                          autoWidth = TRUE,
+                          columnDefs = list(
+                              list(width = '40px', targets = c(2,3,4,5,6,8,9)),
+                              list(width = '80px', targets = c(7)),
+                              list(className = 'dt-center', targets = c(2,3,4,5,6,7,8,9))
+                          )                         
+                         ))
+```
+
+```{r echo = FALSE}
+datos_municipio <- datos_municipio[1:30,]
+casos_municipio_a100k <- casos_municipio_a100k[1:30,]
+```
+
+
+### Histogramas de total y aumento de casos positivos en 30 municipios con mas casos {.tabset}
+
+```{r echo = FALSE}
+knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 1. 
+Barras grises y los números negros muestran 
+los casos acumulados antes de la fecha del análisis del aumento, 
+las barras y números en rojo muestran el aumento durnte el período considerado.
+</div><br />'))
+```
+
+#### En últimas dos semanas
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(12, 5, 4, 2))
+par(mgp=c(4,1,0))
+
+cpen_ymax <- 1.1 * max(datos_municipio[,casos_fechas[1]])
+
+cpen_barplot <- barplot(height = datos_municipio[,casos_fechas[1]], 
+        names.arg = datos_municipio$Nom_Mun, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "casos de COVID-19",
+        main = paste("Casos de COVID-19 acumulados para", fecha_formato, "y aumento desde", fecha_formato - 15))
+
+barplot(height = datos_municipio[,casos_fechas[15]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_municipio[,casos_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = datos_municipio[,casos_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = datos_municipio[,casos_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_municipio[,casos_fechas[1]] - datos_municipio[,casos_fechas[15]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos hace dos semanas", "aumento en dos semanas"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+
+#### Durante la última semana
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(12, 5, 4, 2))
+par(mgp=c(4,1,0))
+
+cpen_ymax <- 1.1 * max(datos_municipio[,casos_fechas[1]])
+
+cpen_barplot <- barplot(height = datos_municipio[,casos_fechas[1]], 
+        names.arg = datos_municipio$Nom_Mun, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "casos de COVID-19",        
+        main = paste("Casos de COVID-19 acumulados para", fecha_formato, "y aumento desde", fecha_formato - 7))
+
+barplot(height = datos_municipio[,casos_fechas[8]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_municipio[,casos_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = datos_municipio[,casos_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = datos_municipio[,casos_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_municipio[,casos_fechas[1]] - datos_municipio[,casos_fechas[8]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos registrados hace una semana", "aumento en la última semana"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Durante la semana pasada
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(12, 5, 4, 2))
+par(mgp=c(4,1,0))
+
+cpen_ymax <- 1.1 * max(datos_municipio[,casos_fechas[8]])
+
+cpen_barplot <- barplot(height = datos_municipio[,casos_fechas[8]], 
+        names.arg = datos_municipio$Nom_Mun, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "casos de COVID-19",        
+        main = paste("Casos de COVID-19 acumulados para", fecha_formato - 7, "y aumento desde", fecha_formato - 15))
+
+barplot(height = datos_municipio[,casos_fechas[15]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_municipio[,casos_fechas[8]] + 0.05 * cpen_ymax, 
+     labels = datos_municipio[,casos_fechas[8]], cex = 0.7)
+text(x = cpen_barplot, y = datos_municipio[,casos_fechas[8]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_municipio[,casos_fechas[8]] - datos_municipio[,casos_fechas[15]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos hace dos semanas", "aumento en la semana anterior"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Aumento desde ayer
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(12, 5, 4, 2))
+par(mgp=c(4,1,0))
+
+cpen_ymax <- 1.1 * max(datos_municipio[,casos_fechas[1]])
+
+cpen_barplot <- barplot(height = datos_municipio[,casos_fechas[1]], 
+        names.arg = datos_municipio$Nom_Mun, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "casos de COVID-19",        
+        main = paste("Casos de COVID-19 acumulados para", fecha_formato, "y aumento desde el día anterior"))
+
+barplot(height = datos_municipio[,casos_fechas[2]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_municipio[,casos_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = datos_municipio[,casos_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = datos_municipio[,casos_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_municipio[,casos_fechas[1]] - datos_municipio[,casos_fechas[2]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos registrados el día anterior", "aumento"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+
+### Histogramas de total y aumento de casos positivos por 100 mil habitantes en 30 municipios con mas casos  {.tabset}
+
+```{r echo = FALSE}
+knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 2. 
+Barras grises y los números negros muestran 
+los casos acumulados antes de la fecha del análisis del aumento, 
+las barras y números en rojo muestran el aumento durnte el período considerado.
+</div><br />'))
+```
+
+#### En últimas dos semanas
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(12, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(casos_municipio_a100k[,casos_fechas[1]])
+
+cpen_barplot <- barplot(height = casos_municipio_a100k[,casos_fechas[1]],
+        names.arg = datos_municipio$Nom_Mun, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "casos COVID-19 por 100 mil habitantes",
+        main = paste("Casos de COVID-19 por 100 mil habitantes para", fecha_formato, "y aumento desde", fecha_formato - 15))
+
+barplot(height = casos_municipio_a100k[,casos_fechas[15]], col = "gray",
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.05 * cpen_ymax,
+     labels = casos_municipio_a100k[,casos_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.02 * cpen_ymax,
+     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]],1), sep = ""),
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos hace dos semanas", "aumento en dos semanas"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Durante la última semana
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(12, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(casos_municipio_a100k[,casos_fechas[1]])
+
+cpen_barplot <- barplot(height = casos_municipio_a100k[,casos_fechas[1]],
+        names.arg = datos_municipio$Nom_Mun, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "casos COVID-19 por 100 mil habitantes",
+        main = paste("Casos de COVID-19 por 100 mil habitantes para", fecha_formato, "y aumento desde", fecha_formato - 7))
+
+barplot(height = casos_municipio_a100k[,casos_fechas[8]], col = "gray",
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.05 * cpen_ymax,
+     labels = casos_municipio_a100k[,casos_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.02 * cpen_ymax,
+     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[8]],1), sep = ""),
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos registrados hace una semana", "aumento en la última semana"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Durante la semana pasada
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(12, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(casos_municipio_a100k[,casos_fechas[8]])
+
+cpen_barplot <- barplot(height = casos_municipio_a100k[,casos_fechas[8]],
+        names.arg = datos_municipio$Nom_Mun, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "casos COVID-19 por 100 mil habitantes",
+        main = paste("Casos de COVID-19 por 100 mil habitantes para", fecha_formato - 7, "y aumento desde", fecha_formato - 15))
+
+barplot(height = casos_municipio_a100k[,casos_fechas[15]], col = "gray",
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[8]] + 0.05 * cpen_ymax,
+     labels = casos_municipio_a100k[,casos_fechas[8]], cex = 0.7)
+text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[8]] + 0.02 * cpen_ymax,
+     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[8]] - casos_municipio_a100k[,casos_fechas[15]],1), sep = ""),
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos hace dos semanas", "aumento en la semana anterior"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Aumento desde ayer
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(12, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(casos_municipio_a100k[,casos_fechas[1]])
+
+cpen_barplot <- barplot(height = casos_municipio_a100k[,casos_fechas[1]],
+        names.arg = datos_municipio$Nom_Mun, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "casos COVID-19 por 100 mil habitantes",
+        main = paste("Casos de COVID-19 por 100 mil habitantes para", fecha_formato, "y aumento desde el día anterior"))
+
+barplot(height = casos_municipio_a100k[,casos_fechas[2]], col = "gray",
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.05 * cpen_ymax,
+     labels = casos_municipio_a100k[,casos_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.02 * cpen_ymax,
+     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[2]],1), sep = ""),
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos registrados el día anterior", "aumento"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+### Dinámica de casos nuevos en últimas dos semanas en 30 municipios con mas casos {.tabset}
+
+```{r echo = FALSE}
+knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 3.</div><br />'))
+```
+
+#### Casos nuevos por día
+
+La secuencia de particiones en las barras corresponde a la lista de municipios por el núemero de caso nuevos durante las útlimas dos semanas.
+
+```{r echo = FALSE,  fig.width = 11, fig.height = 8}
+
+casos_fechas_ok <- casos_fechas[seq(length(casos_fechas)-1,1)]
+
+## sequencia de fechas completa considerada
+casos_fechas_completo <- paste0("casos",fecha_cadena(fecha_formato - seq(0, m)))
+
+## Calcular incremento diario
+dia <- datos_municipio[,c(casos_fechas_completo)]
+dia_antes <- cbind(datos_municipio[,c(casos_fechas_completo[-1])],data.frame(inicio = rep(0,nrow(datos_municipio))))
+incremento <- dia - dia_antes
+incremento[incremento < 0] <- 0
+incremento[is.na(incremento)] <- 0
+
+# 
+ library(RColorBrewer)
+
+ miscolores_vector <- c()
+ for (i in 1:8) {
+   miscolores_vector <- c(miscolores_vector, brewer.pal(n = 9, name = 'Pastel1')[i])
+ }
+ for (i in 1:9) {
+   miscolores_vector <- c(miscolores_vector, brewer.pal(n = 9, name = 'Set1')[i])
+ } 
+ for (i in 1:8) {
+   miscolores_vector <- c(miscolores_vector, brewer.pal(n = 8, name = 'Pastel2')[i])
+ }
+ for (i in 1:5) {
+   miscolores_vector <- c(miscolores_vector, brewer.pal(n = 5, name = 'Set2')[i])
+ } 
+ for (i in 1:100) {
+    miscolores_vector <- c(miscolores_vector,"white")
+ }
+ miscolores_vector <- unlist(miscolores_vector)
+# miscolores_vector
+# 
+ mi_incremento <- as.matrix(incremento[,c(casos_fechas_ok)])
+ colnames(mi_incremento) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+# dim(mi_incremento)
+ #str(mi_incremento)
+# 
+par(cex = 0.8, mar = c(5, 8, 7, 2))
+par(oma=c(0, 0, 0, 0))
+
+x_max <- 1.1 * max(apply(mi_incremento, 2, FUN = sum))
+
+barplot(mi_incremento,
+        xlim = c(0,x_max),
+        horiz = TRUE, las = 1,
+        col = miscolores_vector,
+        xlab = "casos nuevos registrados",
+        legend.text = FALSE
+
+        # args.legend = list(legend = c("EN PROCESO","NEGATIVO COVID-19","POSITIVO COVID-19"),
+        #                    border = c("black","black","black"),
+        #                    fill = c("lightgray","lightblue","red"),
+        #                    bty = "n",
+        #                    x = 400,
+        #                    y = 10
+        #                    )
+        )
+
+#legend("topright", legend = datos_municipio[,"Nom_Mun"], fill=miscolores_vector, ncol = 7, bty = "n", inset=c(-0.2,-0.15), xpd=TRUE)
+legend("topright", legend = datos_municipio[,"Nom_Mun"], fill=miscolores_vector, ncol = 5, bty = "n", inset=c(-0.1,-0.15), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+
+
+
+```
+
+#### Aumento por 100k
+
+```{r echo = FALSE,  fig.width = 11, fig.height = 8}
+
+par(mar = c(12, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(datos_municipio$aumento_2sem_a100k)
+
+cpen_barplot <- barplot(height = datos_municipio$aumento_2sem_a100k,
+        names.arg = datos_municipio$Nom_Mun, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "aumento de casos COVID-19 por 100 mil habitantes",
+        main = paste("Aumento de casos de COVID-19 por 100 mil habitantes entre", fecha_formato - 15, "y", fecha_formato))
+
+#barplot(height = casos_municipio_a100k[,casos_fechas[15]], col = "gray",
+#                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_municipio$aumento_2sem_a100k + 0.02 * cpen_ymax,
+     labels = paste("+", round(datos_municipio$aumento_2sem_a100k,1), sep = ""),
+     cex = 0.7)
+#text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.02 * cpen_ymax,
+#     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]],1), sep = ""),
+#       col = "red", cex = 0.6)
+
+#legend("topright", horiz = TRUE, bty = "n",
+#      legend = c("casos hace dos semanas", "aumento en dos semanas"),
+#      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Aumento en porcientos
+
+```{r echo = FALSE,  fig.width = 11, fig.height = 8}
+
+par(mar = c(12, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(datos_municipio$aumento_2semp)
+
+cpen_barplot <- barplot(height = datos_municipio$aumento_2semp, 
+        names.arg = datos_municipio$Nom_Mun, col = "darkgray",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "aumento de casos COVID-19 (%)",
+        main = paste("Aumento de casos de COVID-19 en porcientos entre", fecha_formato - 15, "y", fecha_formato))
+
+#barplot(height = casos_municipio_a100k[,casos_fechas[15]], col = "gray", 
+#                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_municipio$aumento_2semp + 0.02 * cpen_ymax, 
+     labels = paste(round(datos_municipio$aumento_2semp,0), "%", sep = ""), 
+     cex = 0.7)
+#text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.02 * cpen_ymax, 
+#     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]],1), sep = ""), 
+#       col = "red", cex = 0.6)
+
+#legend("topright", horiz = TRUE, bty = "n",
+#      legend = c("casos hace dos semanas", "aumento en dos semanas"),
+#      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+
+#### Tiempo de duplicación (TD)
+
+```{r echo = FALSE,  fig.width = 11, fig.height = 8}
+
+par(mar = c(12, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(datos_municipio$dupl_2sem)
+
+cpen_barplot <- barplot(height = datos_municipio$dupl_2sem, 
+        names.arg = datos_municipio$Nom_Mun, col = "beige",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "tiempo de duplicación de número de casos (días)",
+        main = paste("Tiempo de duplicación de casos de COVID-19 observado entre", fecha_formato - 30, "y", fecha_formato - 15))
+
+#barplot(height = casos_municipio_a100k[,casos_fechas[15]], col = "gray", 
+#                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_municipio$dupl_2sem + 0.02 * cpen_ymax, 
+     labels = datos_municipio$dupl_2sem, 
+     cex = 0.7)
+#text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.02 * cpen_ymax, 
+#     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]],1), sep = ""), 
+#       col = "red", cex = 0.6)
+
+#legend("topright", horiz = TRUE, bty = "n",
+#      legend = c("casos hace dos semanas", "aumento en dos semanas"),
+#      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+
+
+```{r echo = FALSE,  fig.width = 11, fig.height = 8}
+#### Número reproductivo (Rt)
+
+#Para el caso de los datos por fecha de sintomas, el valor de Rt se calcula para el momento de epidemia hace dos semanas
+#La razón de esto es la falta de estabilización en los reportes de casos en los días posteriores a la fecha del cálculo, derivada del tiempo requerido para el procesamiento de muestras y reporte de sus resultados en las bases de datos.
+
+# par(mar = c(10, 4, 4, 2))
+# par(mgp=c(3,1,0))
+# 
+# cpen_ymax <- 1.1 * max(datos_municipio$Rt, na.rm = TRUE)
+# cpen_ymin <- 0.9 * min(datos_municipio$Rt, na.rm = TRUE)
+# 
+# cpen_barplot <- plot(x = 1:nrow(datos_municipio), y = datos_municipio$Rt, 
+#         col = "black",
+#         pch = 19,
+#         las = 2, ylim = c(cpen_ymin, cpen_ymax),
+#         ylab = "Rt", xlab = "", xaxt="n",
+#         main = paste("Número reproductivo de COVID-19 estimado para", fecha_formato,  ", considerando desarrollo desde", fecha_formato))
+# 
+# axis(1, at = 1:nrow(datos_municipio), labels = datos_municipio$Nom_Mun, las = 2)
+# 
+# #points(x = 1:nrow(datos_estado), y = datos_municipio$Rt_lower)
+# arrows(x0 = 1:nrow(datos_estado), x1 = 1:nrow(datos_estado), 
+#        y0 = datos_municipio$Rt, y1 = datos_municipio$Rt_lower-0.001, 
+#        length = 0.1, angle = 90,
+#        code = 2)
+# arrows(x0 = 1:nrow(datos_estado), x1 = 1:nrow(datos_estado), 
+#        y0 = datos_municipio$Rt, y1 = datos_municipio$Rt_upper+0.001, 
+#        length = 0.1, angle = 90,
+#        code = 2)
+# 
+# abline(h = 1, lty = 3)
+# 
+# #barplot(height = casos_municipio_a100k[,casos_fechas[15]], col = "gray", 
+# #                        axes = FALSE, add = TRUE)
+# # names.arg = datos_municipio$Estado, 
+# 
+# #text(x = cpen_barplot, y = datos_municipio$Rt + 0.02 * cpen_ymax, 
+# #     labels = datos_municipio$Rt, 
+# #     cex = 0.7)
+# #text(x = cpen_barplot, y = casos_municipio_a100k[,casos_fechas[1]] + 0.02 * cpen_ymax, 
+# #     labels = paste("+", round(casos_municipio_a100k[,casos_fechas[1]] - casos_municipio_a100k[,casos_fechas[15]],1), sep = ""), 
+# #       col = "red", cex = 0.6)
+# 
+# legend("topright", horiz = FALSE, bty = "n",
+#       legend = c("estimación con el método Bayesiano (Bettencourt y Ribeiro 2008)",
+#         "bigotes representan el intervalo de confianza de 95%"))
+# 
+# knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+
+```{r echo = FALSE}
+## Pruebas (quedara excluido del producto final)
+
+#matplot(t(datos_estado[,c(casos_fechas)]), type = "l")
+#matplot(t(incremento[,c(casos_fechas_ok)]), type = "l", col = 1:32, lty = 1)
+#matplot(datos_estado[,"Estado"], datos_estado[,c(casos_fechas)], type = 'l', 
+#        xlim = c(0, 15),
+#        xlab = "topics", ylab = "event", col = 2:4, pch = 1)
+#legend("topright", legend = datos_estado[,"Estados"], pch = 1, col=2:4)
+
+
+#casos_total <- apply(datos_estado[,casos_fechas], 2 , sum)
+#casos_total <- casos_total[seq(length(casos_total),1)]
+#casos_dia <- casos_total - c(casos_total[-1],0)
+
+
+#plot(casos_dia, type = "b")
+
+#plot(datos_estado[,casos_fechas], type = "l", lty = 1)
+#plot(apply(datos_estado[,casos_fechas], 2 , sum), type = "b")
+```

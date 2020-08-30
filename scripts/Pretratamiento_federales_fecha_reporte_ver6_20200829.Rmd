@@ -1,0 +1,431 @@
+---
+title: "Tratamiento datos COVID-19 México 29/08/2020"
+author: "Shalisko V., Santana E., Castillo Aja R., Valdivia Ornelas L."
+date: "29/08/2020"
+output:
+  html_document: 
+    css: mystyle.css
+---
+
+```{r variables-ajustables, echo = FALSE}
+fecha <- "29 de agosto del 2020"
+fecha_formato <- "2020-08-29"
+```
+
+#### Última actualización `r fecha`
+#### Authores: Shalisko V., Santana E., Castillo Aja R., Valdivia Ornelas L.
+#### Versión 6.0
+#### Datos fuente
+Datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Fuentes auxiliares
+Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> y Catálogo Único de Claves de Áreas Geoestadísticas Estatales, Municipales y Localidades de INEGI <https://www.inegi.org.mx/app/ageeml/>
+
+```{r echo = FALSE}
+#library(htmltools)
+#library(DT)
+#library(MASS)
+#library(R0)
+#library(leaflet)
+#library(sp)
+
+## numero de dias al pasado que se consideraran (además del dia de fecha)
+n <- 100
+
+## Codigo HTML para boton de Creative Commons 
+cc_html <- '<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a>.'
+```
+
+```{css, echo=FALSE}
+```
+
+```{r auxiliares, echo = FALSE}
+estados <- read.csv("../datos/Catalogos_0412_ENTIDADES.csv")
+poblacion_estados <- read.csv("../datos/Poblacion_01.csv", stringsAsFactors = FALSE)
+poblacion_estados$Poblacion <- as.numeric(poblacion_estados$Poblacion)
+#str(poblacion_estados)
+
+## tabla base estados
+tb_estados <- merge(x = estados, y = poblacion_estados, by.x = "CLAVE_ENTIDAD", by.y = "ID")
+#dim(tb_estados)
+#str(tb_estados)
+
+municipios <- read.csv("../datos/Catalogos_0412_MUNICIPIOS.csv", stringsAsFactors = FALSE)
+#str(municipios)
+#dim(municipios)
+municipios2 <- read.csv("../datos/catalogo_municipios.csv", stringsAsFactors = FALSE)
+#str(municipios2)
+#dim(municipios2)
+
+## tabla base municipios
+tb_municipios <- merge(x = municipios, y = municipios2,
+                        all.x = TRUE, all.y = TRUE,
+                        by.x = c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO"), 
+                        by.y = c("Cve_Ent","Cve_Mun"))
+tb_municipios <- merge(x = tb_municipios, y = tb_estados[,c("CLAVE_ENTIDAD","ABREVIATURA")], 
+                       by = "CLAVE_ENTIDAD", all.x = TRUE)
+tb_municipios$Clave_Mun_Ent_Texto <- as.numeric(as.character(tb_municipios$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(tb_municipios$CLAVE_ENTIDAD))
+tb_municipios$Clave_Mun_Ent_Texto <- sprintf("%05d", tb_municipios$Clave_Mun_Ent_Texto)
+
+zonas_metropolitanas_m <- read.csv("../datos_zm/ZM_2010_municipios.txt", stringsAsFactors = FALSE)
+zonas_metropolitanas <- read.csv("../datos_zm/ZM_2010.csv", stringsAsFactors = FALSE)
+poblacion_zm <- read.csv("../datos_zm/ZM_poblacion.csv", stringsAsFactors = FALSE)
+
+## columna CVE_MUN1 continene clave Clave_Mun_Ent_Texto
+zonas_metropolitanas_m$Clave_Mun_Ent_Texto <- zonas_metropolitanas_m$CVE_MUN1
+zonas_metropolitanas_m$Clave_Mun_Ent_Texto <- sprintf("%05d", zonas_metropolitanas_m$Clave_Mun_Ent_Texto)  
+
+#zonas_metropolitanas_m[,c("Clave_Mun_Ent_Texto","CVE_SUN")]
+
+## tabla base zonas metropolitanas
+tb_metropolitanas <- merge(x = zonas_metropolitanas, y = poblacion_zm, by.x = "CVE_SUN", by.y = "CVE_SUN")
+#str(zonas_metropolitanas)
+#str(poblacion_zm)
+#str(tb_metropolitanas)
+```
+
+```{r subrutinas, echo = FALSE}
+
+fecha_formato <- as.Date(fecha_formato)
+
+fecha_cadena <- function(mi_f) {
+  ## Como esxtraer partes de fecha
+  ## dia
+  #as.POSIXlt(fecha_formato)$mday
+  ## mes
+  #as.POSIXlt(fecha_formato)$mon + 1
+  ## año
+  #as.POSIXlt(fecha_formato)$year + 1900
+    
+  mi_cadena <- paste0(  
+    sprintf("%02d", as.POSIXlt(mi_f)$year - 100),
+    sprintf("%02d", as.POSIXlt(mi_f)$mon + 1),
+    sprintf("%02d", as.POSIXlt(mi_f)$mday)
+  )
+  return(mi_cadena)
+}
+
+file_by_date <- function (mi_f) {
+  ## funcion regresa nombre del archivo con ruta basandose en su fecha
+  ## prefijo de ruta
+  mi_pr <- "../datos/"
+  ## postfijo de ruta
+  mi_po <- "COVID19MEXICO.csv"
+  mi_file <- paste0(mi_pr, fecha_cadena(mi_f), mi_po)
+  return(mi_file)
+}
+
+casos_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos positivos por estado
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1,]$ENTIDAD_RES))
+  mi_columna <- paste0("casos", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+casos_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos positivos por municipio
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1,]$ENTIDAD_RES,mi_datos[mi_datos$RESULTADO == 1,]$MUNICIPIO_RES))
+  mi_columna <- paste0("casos", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+casos_zm <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos positivos por zona metropolitana
+  mi_datos_seleccion <- mi_datos[mi_datos$RESULTADO == 1,]
+  ## formar cadena de clave municipio-estado
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_datos_seleccion$MUNICIPIO_RES)) + 
+                             1000 * as.numeric(as.character(mi_datos_seleccion$ENTIDAD_RES))
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_datos_seleccion$Clave_Mun_Ent_Texto)  
+  ## vincular registros con códigos de zonas metropolitanas
+  mi_datos_seleccion <- merge(x = mi_datos_seleccion, y = zonas_metropolitanas_m[,c("Clave_Mun_Ent_Texto","CVE_SUN")],
+                              by.x = "Clave_Mun_Ent_Texto", by.y = "Clave_Mun_Ent_Texto")
+  if (nrow(mi_datos_seleccion > 0)) {
+    mi_tabla <- as.data.frame(aggregate(RESULTADO ~ CVE_SUN, data = mi_datos_seleccion, FUN = length))    
+  } else {
+    ## se requiere regresar tabla con ceros en caso que no hay datos
+    mi_tabla <- data.frame(a = seq(1:1), b = rep(NA,1))
+  }
+  mi_columna <- paste0("casos", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CVE_SUN",mi_columna)
+  return(mi_tabla)
+}
+neg_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos negativos por estado
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 2,]$ENTIDAD_RES))
+  mi_columna <- paste0("neg", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+neg_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos negativos por municipio
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 2,]$ENTIDAD_RES,mi_datos[mi_datos$RESULTADO == 2,]$MUNICIPIO_RES))
+  mi_columna <- paste0("neg", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+neg_zm <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos negativos por zona metropolitana
+  mi_datos_seleccion <- mi_datos[mi_datos$RESULTADO == 2,]
+  ## formar cadena de clave municipio-estado
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_datos_seleccion$MUNICIPIO_RES)) + 
+                             1000 * as.numeric(as.character(mi_datos_seleccion$ENTIDAD_RES))
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_datos_seleccion$Clave_Mun_Ent_Texto)  
+  ## vincular registros con códigos de zonas metropolitanas
+  mi_datos_seleccion <- merge(x = mi_datos_seleccion, y = zonas_metropolitanas_m[,c("Clave_Mun_Ent_Texto","CVE_SUN")],
+                              by.x = "Clave_Mun_Ent_Texto", by.y = "Clave_Mun_Ent_Texto")
+  if (nrow(mi_datos_seleccion > 0)) {
+    mi_tabla <- as.data.frame(aggregate(RESULTADO ~ CVE_SUN, data = mi_datos_seleccion, FUN = length))    
+  } else {
+    ## se requiere regresar tabla con ceros en caso que no hay datos
+    mi_tabla <- data.frame(a = seq(1:1), b = rep(NA,1))
+  }
+  mi_columna <- paste0("neg", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CVE_SUN",mi_columna)
+  return(mi_tabla)
+}
+pend_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos pendientes por estado
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 3,]$ENTIDAD_RES))
+  mi_columna <- paste0("pend", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+pend_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos pendientes por municipio
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 3,]$ENTIDAD_RES,mi_datos[mi_datos$RESULTADO == 3,]$MUNICIPIO_RES))
+  mi_columna <- paste0("pend", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+pend_zm <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos pendientes por zona metropolitana
+  mi_datos_seleccion <- mi_datos[mi_datos$RESULTADO == 3,]
+  ## formar cadena de clave municipio-estado
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_datos_seleccion$MUNICIPIO_RES)) + 
+                             1000 * as.numeric(as.character(mi_datos_seleccion$ENTIDAD_RES))
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_datos_seleccion$Clave_Mun_Ent_Texto)  
+  ## vincular registros con códigos de zonas metropolitanas
+  mi_datos_seleccion <- merge(x = mi_datos_seleccion, y = zonas_metropolitanas_m[,c("Clave_Mun_Ent_Texto","CVE_SUN")],
+                              by.x = "Clave_Mun_Ent_Texto", by.y = "Clave_Mun_Ent_Texto")
+  if (nrow(mi_datos_seleccion > 0)) {
+    mi_tabla <- as.data.frame(aggregate(RESULTADO ~ CVE_SUN, data = mi_datos_seleccion, FUN = length))    
+  } else {
+    ## se requiere regresar tabla con ceros en caso que no hay datos
+    mi_tabla <- data.frame(a = seq(1:1), b = rep(NA,1))
+  }
+  mi_columna <- paste0("pend", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CVE_SUN",mi_columna)
+  return(mi_tabla)
+}
+def_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos defuntos por estado
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]$ENTIDAD_RES))
+  mi_columna <- paste0("def", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+def_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos defuntos por municipio
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]$ENTIDAD_RES,
+                                  mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]$MUNICIPIO_RES))
+  mi_columna <- paste0("def", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+def_zm <- function(mi_datos, mi_fecha) {
+  ## determinar numero da defunciones por zona metropolitana
+  mi_datos_seleccion <- mi_datos[mi_datos$RESULTADO == 1 & mi_datos$FECHA_DEF != '9999-99-99',]
+  ## formar cadena de clave municipio-estado
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_datos_seleccion$MUNICIPIO_RES)) + 
+                             1000 * as.numeric(as.character(mi_datos_seleccion$ENTIDAD_RES))
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_datos_seleccion$Clave_Mun_Ent_Texto)  
+  ## vincular registros con códigos de zonas metropolitanas
+  mi_datos_seleccion <- merge(x = mi_datos_seleccion, y = zonas_metropolitanas_m[,c("Clave_Mun_Ent_Texto","CVE_SUN")],
+                              by.x = "Clave_Mun_Ent_Texto", by.y = "Clave_Mun_Ent_Texto")
+  if (nrow(mi_datos_seleccion > 0)) {
+    mi_tabla <- as.data.frame(aggregate(RESULTADO ~ CVE_SUN, data = mi_datos_seleccion, FUN = length))    
+  } else {
+    ## se requiere regresar tabla con ceros en caso que no hay datos
+    mi_tabla <- data.frame(a = seq(1:1), b = rep(NA,1))
+  }
+  mi_columna <- paste0("def", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CVE_SUN",mi_columna)
+  return(mi_tabla)
+}
+hosp_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos hospitalizados por estado (acumulativo)
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]$ENTIDAD_RES))
+  mi_columna <- paste0("hosp", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+hosp_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos hospitalizados por municipio (acumulativo)
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]$ENTIDAD_RES,
+                                  mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]$MUNICIPIO_RES))
+  mi_columna <- paste0("hosp", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+hosp_zm <- function(mi_datos, mi_fecha) {
+  ## determinar numero da hospitalizaciones por zona metropolitana
+  mi_datos_seleccion <- mi_datos[mi_datos$RESULTADO == 1 & mi_datos$TIPO_PACIENTE == 2,]
+  ## formar cadena de clave municipio-estado
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_datos_seleccion$MUNICIPIO_RES)) + 
+                             1000 * as.numeric(as.character(mi_datos_seleccion$ENTIDAD_RES))
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_datos_seleccion$Clave_Mun_Ent_Texto)  
+  ## vincular registros con códigos de zonas metropolitanas
+  mi_datos_seleccion <- merge(x = mi_datos_seleccion, y = zonas_metropolitanas_m[,c("Clave_Mun_Ent_Texto","CVE_SUN")],
+                              by.x = "Clave_Mun_Ent_Texto", by.y = "Clave_Mun_Ent_Texto")
+  if (nrow(mi_datos_seleccion > 0)) {
+    mi_tabla <- as.data.frame(aggregate(RESULTADO ~ CVE_SUN, data = mi_datos_seleccion, FUN = length))    
+  } else {
+    ## se requiere regresar tabla con ceros en caso que no hay datos
+    mi_tabla <- data.frame(a = seq(1:1), b = rep(NA,1))
+  }
+  mi_columna <- paste0("hosp", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CVE_SUN",mi_columna)
+  return(mi_tabla)
+}
+uci_est <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos en uci por estado (acumulativo)
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]$ENTIDAD_RES))
+  mi_columna <- paste0("uci", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD",mi_columna)
+  return(mi_tabla)
+}
+uci_mun <- function(mi_datos, mi_fecha) {
+  ## determinar numero da casos en uci por municipio (acumulativo)
+  mi_tabla <- as.data.frame(table(mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]$ENTIDAD_RES,
+                                  mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]$MUNICIPIO_RES))
+  mi_columna <- paste0("uci", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CLAVE_ENTIDAD","CLAVE_MUNICIPIO",mi_columna)
+  mi_tabla$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_tabla$CLAVE_MUNICIPIO)) + 
+                             1000 * as.numeric(as.character(mi_tabla$CLAVE_ENTIDAD))
+  mi_tabla$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_tabla$Clave_Mun_Ent_Texto)  
+  return(mi_tabla[,c("Clave_Mun_Ent_Texto",mi_columna)])
+}
+uci_zm <- function(mi_datos, mi_fecha) {
+  ## determinar numero en uci por zona metropolitana
+  mi_datos_seleccion <- mi_datos[mi_datos$RESULTADO == 1 & mi_datos$UCI == 1,]
+  ## formar cadena de clave municipio-estado
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- as.numeric(as.character(mi_datos_seleccion$MUNICIPIO_RES)) + 
+                             1000 * as.numeric(as.character(mi_datos_seleccion$ENTIDAD_RES))
+  mi_datos_seleccion$Clave_Mun_Ent_Texto <- sprintf("%05d", mi_datos_seleccion$Clave_Mun_Ent_Texto)  
+  ## vincular registros con códigos de zonas metropolitanas
+  mi_datos_seleccion <- merge(x = mi_datos_seleccion, y = zonas_metropolitanas_m[,c("Clave_Mun_Ent_Texto","CVE_SUN")],
+                              by.x = "Clave_Mun_Ent_Texto", by.y = "Clave_Mun_Ent_Texto")
+  if (nrow(mi_datos_seleccion > 0)) {
+    mi_tabla <- as.data.frame(aggregate(RESULTADO ~ CVE_SUN, data = mi_datos_seleccion, FUN = length))    
+  } else {
+    ## se requiere regresar tabla con ceros en caso que no hay datos
+    mi_tabla <- data.frame(a = seq(1:1), b = rep(NA,1))
+  }
+  mi_columna <- paste0("uci", fecha_cadena(mi_fecha))
+  colnames(mi_tabla) <- c("CVE_SUN",mi_columna)
+  return(mi_tabla)
+}
+```
+
+# ANALISIS MÉXICO
+## Casos positivos de COVID-19 por fecha de reporte de SSA
+
+```{r datos, echo = FALSE}
+## lectura de datos por dia y construcción de tablas
+## hacer tabla de inicio con nombres de estados
+datos_estado <- tb_estados
+## hacer tabla de inicio con nombres de estados
+datos_municipio <- tb_municipios
+## hacer tabla de inicio con nombres de zpnas metropolitanas
+datos_metropolitanas <- tb_metropolitanas
+
+## construir tabla registros por estado durante el periodo deseable
+for(i in 0:n) {
+  ## construir fecha
+  fecha_d <- fecha_formato - i
+  
+  ## lectura del archivo CSV
+  d <- read.csv(file_by_date(fecha_d))
+  
+  ## por estado
+  positivos_d <- casos_est(d, fecha_d)
+  negativos_d <- neg_est(d, fecha_d)
+  pendientes_d <- pend_est(d, fecha_d)
+  defunciones_d <- def_est(d, fecha_d)
+  hospitalizados_d <- hosp_est(d, fecha_d)
+  uci_d <- uci_est(d, fecha_d)  
+  datos_estado <- merge(x = datos_estado, y = positivos_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = negativos_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = pendientes_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = defunciones_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = hospitalizados_d, by = "CLAVE_ENTIDAD", all.x = TRUE)
+  datos_estado <- merge(x = datos_estado, y = uci_d, by = "CLAVE_ENTIDAD", all.x = TRUE)  
+  
+  ## por municipio
+  positivosm_d <- casos_mun(d, fecha_d)
+  negativosm_d <- neg_mun(d, fecha_d)
+  pendientesm_d <- pend_mun(d, fecha_d)
+  defuncionesm_d <- def_mun(d, fecha_d)
+  hospitalizadosm_d <- hosp_mun(d, fecha_d)
+  ucim_d <- uci_mun(d, fecha_d)
+  datos_municipio <- merge(x = datos_municipio, y = positivosm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = negativosm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = pendientesm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = defuncionesm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = hospitalizadosm_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  datos_municipio <- merge(x = datos_municipio, y = ucim_d, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+
+  ## por zm
+  positivosz_d <- casos_zm(d, fecha_d)
+  negativosz_d <- neg_zm(d, fecha_d)
+  pendientesz_d <- pend_zm(d, fecha_d)
+  defuncionesz_d <- def_zm(d, fecha_d)
+  hospitalizadosz_d <- hosp_zm(d, fecha_d)
+  uciz_d <- uci_zm(d, fecha_d)  
+  
+  datos_metropolitanas <- merge(x = datos_metropolitanas, y = positivosz_d, by = "CVE_SUN", all.x = TRUE)
+  datos_metropolitanas[is.na(datos_metropolitanas[,ncol(datos_metropolitanas)]),ncol(datos_metropolitanas)] <- 0
+  datos_metropolitanas <- merge(x = datos_metropolitanas, y = negativosz_d, by = "CVE_SUN", all.x = TRUE)
+  datos_metropolitanas[is.na(datos_metropolitanas[,ncol(datos_metropolitanas)]),ncol(datos_metropolitanas)] <- 0
+  datos_metropolitanas <- merge(x = datos_metropolitanas, y = pendientesz_d, by = "CVE_SUN", all.x = TRUE)
+  datos_metropolitanas[is.na(datos_metropolitanas[,ncol(datos_metropolitanas)]),ncol(datos_metropolitanas)] <- 0 
+  datos_metropolitanas <- merge(x = datos_metropolitanas, y = defuncionesz_d, by = "CVE_SUN", all.x = TRUE)
+  datos_metropolitanas[is.na(datos_metropolitanas[,ncol(datos_metropolitanas)]),ncol(datos_metropolitanas)] <- 0  
+  datos_metropolitanas <- merge(x = datos_metropolitanas, y = hospitalizadosz_d, by = "CVE_SUN", all.x = TRUE)
+  datos_metropolitanas[is.na(datos_metropolitanas[,ncol(datos_metropolitanas)]),ncol(datos_metropolitanas)] <- 0  
+  datos_metropolitanas <- merge(x = datos_metropolitanas, y = uciz_d, by = "CVE_SUN", all.x = TRUE)
+  datos_metropolitanas[is.na(datos_metropolitanas[,ncol(datos_metropolitanas)]),ncol(datos_metropolitanas)] <- 0    
+    
+  ## cerrar el archivo CSV
+  d <- NULL
+}
+
+
+
+```
+
+```{r save-rds, echo = FALSE}
+# guardar el objeto resultante intermedio
+#str(datos_estado)
+#str(datos_municipio)}
+saveRDS(datos_estado, paste0("object_estado_",fecha_formato,".rds"))
+saveRDS(datos_municipio, paste0("object_municipio_",fecha_formato,".rds"))
+saveRDS(datos_metropolitanas, paste0("object_metropolitanos_",fecha_formato,".rds"))
+```
+
