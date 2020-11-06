@@ -1,0 +1,496 @@
+---
+title: "Tratamiento datos COVID-19 México 31/10/2020"
+author: "Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L."
+date: "31/10/2020"
+output:
+  html_document: 
+    css: mystyle.css
+---
+
+```{r variables-ajustables, echo = FALSE}
+fecha <- "31 de octubre del 2020"
+fecha_formato <- "2020-10-31"
+```
+
+#### Última actualización `r fecha`
+#### Authores: Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L.
+#### Versión 6.1
+#### Datos fuente
+Datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Fuentes auxiliares
+Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> y Catálogo Único de Claves de Áreas Geoestadísticas Estatales, Municipales y Localidades de INEGI <https://www.inegi.org.mx/app/ageeml/>
+
+```{r echo = FALSE}
+knitr::opts_chunk$set(error = TRUE)
+library(htmltools)
+library(DT)
+library(MASS)
+library(R0)
+library(leaflet)
+library(sp)
+#library(leaflet)
+#library(sp)
+
+## numero de dias al pasado que se consideraran (además del dia de fecha)
+n <- 14
+
+## Codigo HTML para boton de Creative Commons 
+cc_html <- '<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a>.'
+```
+
+
+```{r subrutinas, echo = FALSE}
+
+fecha_formato <- as.Date(fecha_formato)
+
+fecha_cadena <- function(mi_f) {
+  ## Como esxtraer partes de fecha
+  ## dia
+  #as.POSIXlt(fecha_formato)$mday
+  ## mes
+  #as.POSIXlt(fecha_formato)$mon + 1
+  ## año
+  #as.POSIXlt(fecha_formato)$year + 1900
+    
+  mi_cadena <- paste0(  
+    sprintf("%02d", as.POSIXlt(mi_f)$year - 100),
+    sprintf("%02d", as.POSIXlt(mi_f)$mon + 1),
+    sprintf("%02d", as.POSIXlt(mi_f)$mday)
+  )
+  return(mi_cadena)
+}
+
+file_by_date <- function (mi_f) {
+  ## funcion regresa nombre del archivo con ruta basandose en su fecha
+  ## prefijo de ruta
+  mi_pr <- "../datos/"
+  ## postfijo de ruta
+  mi_po <- "COVID19MEXICO.csv"
+  mi_file <- paste0(mi_pr, fecha_cadena(mi_f), mi_po)
+  return(mi_file)
+}
+
+
+```
+
+# ANALISIS JALISCO
+## Casos positivos de COVID-19 por fecha de reporte en datos SSA Federal
+
+```{r datos, echo = FALSE}
+## lectura de datos
+## hacer tabla de inicio con nombres de estados
+datos_estado <- readRDS(paste0("object_estado_",fecha_formato,".rds"))
+## hacer tabla de inicio con nombres de estados
+datos_municipio <- readRDS(paste0("object_municipio_",fecha_formato,".rds"))
+```
+
+```{r echo = FALSE}
+datos_estado <- datos_estado[datos_estado$CLAVE_ENTIDAD == 14,]
+## seleccionar solo municipios de Jalisco
+datos_municipio <- datos_municipio[(datos_municipio$CLAVE_ENTIDAD == 14) | 
+                                     (datos_municipio$CLAVE_ENTIDAD == 16) |
+                                     (datos_municipio$CLAVE_ENTIDAD == 1) |
+                                     (datos_municipio$CLAVE_ENTIDAD == 6) |
+                                     (datos_municipio$CLAVE_ENTIDAD == 18) |
+                                     (datos_municipio$CLAVE_ENTIDAD == 11) |
+                                     (datos_municipio$CLAVE_ENTIDAD == 32),]
+datos_municipio <- datos_municipio[datos_municipio$Nom_Mun != "NO ESPECIFICADO",]
+
+
+#str(datos_municipio)
+```
+
+
+
+```{r subtotales, echo = FALSE}
+casos_fechas <- paste0("casos",fecha_cadena(fecha_formato - seq(0, n)))
+neg_fechas <- paste0("neg",fecha_cadena(fecha_formato - seq(0, n)))
+pend_fechas <- paste0("pend",fecha_cadena(fecha_formato - seq(0, n)))
+def_fechas <- paste0("def",fecha_cadena(fecha_formato - seq(0, n)))
+hosp_fechas <- paste0("hosp",fecha_cadena(fecha_formato - seq(0, n)))
+uci_fechas <- paste0("uci",fecha_cadena(fecha_formato - seq(0, n)))
+
+#datos_estado[,c("Estado",casos_fechas)]
+#datos_estado[,c("Estado",neg_fechas)]
+#datos_estado[,c("Estado",pend_fechas)]
+#datos_estado[,c("Estado",def_fechas)]
+#datos_estado[,c("Estado",hosp_fechas)]
+#datos_estado[,c("Estado",uci_fechas)]
+
+casos_nac <- apply(datos_estado[,casos_fechas], 2 , sum)
+neg_nac <- apply(datos_estado[,neg_fechas], 2 , sum)
+pend_nac <- apply(datos_estado[,pend_fechas], 2 , sum)
+def_nac <- apply(datos_estado[,def_fechas], 2 , sum)
+hosp_nac <- apply(datos_estado[,hosp_fechas], 2 , sum)
+uci_nac <- apply(datos_estado[,uci_fechas], 2 , sum)
+```
+
+
+### Casos de COVID-19 confirmados en Jalisco
+
+##### Total de casos registrados para el día `r fecha_formato`: **`r casos_nac[1]`**. 
+##### Aumento de casos desde ayer: **`r casos_nac[1] - casos_nac[2]`** (**`r round(100 * (casos_nac[1] - casos_nac[2]) / casos_nac[2], 2)`%**). 
+##### Aumento durante la última semana (desde `r fecha_formato - 7` hasta `r fecha_formato`): **`r casos_nac[1] - casos_nac[8]`** (**`r round(100 * (casos_nac[1] - casos_nac[8]) / casos_nac[8], 2)`%**).
+##### Aumento durante la semana anterior (desde `r fecha_formato - 15` hasta `r fecha_formato - 8`): **`r casos_nac[8] - casos_nac[15]`** (**`r round(100 * (casos_nac[8] - casos_nac[15]) / casos_nac[15], 2)`%**).
+##### Aumento durante las últimas dos semanas (desde `r fecha_formato - 15` hasta `r fecha_formato`): **`r casos_nac[1] - casos_nac[15]`** (**`r round(100 * (casos_nac[1] - casos_nac[15]) / casos_nac[15], 2)`%**).
+
+### Resumen de casos confirmados por municipios de Jalisco y en los estados colindantes
+
+```{r datos-para-tabla, echo = FALSE}
+datos_municipio <- datos_municipio[datos_municipio[,casos_fechas[1]] > 0,]
+
+datos_municipio$aumento_2sem <- datos_municipio[,casos_fechas[1]] - datos_municipio[,casos_fechas[15]]
+datos_municipio$aumento_2semp <- round(100 * datos_municipio$aumento_2sem / datos_municipio[,casos_fechas[15]],1)
+datos_municipio[is.infinite(datos_municipio$aumento_2semp),"aumento_2semp"] <- 100
+datos_municipio[is.nan(datos_municipio$aumento_2semp),"aumento_2semp"] <- 0
+datos_municipio$aumento_2semt <- paste0(datos_municipio$aumento_2sem," (",datos_municipio$aumento_2semp,"%)")
+
+datos_municipio$casos_hoy100k <- round(100000 * datos_municipio[,casos_fechas[1]] / datos_municipio$Pob_Municipio, 1)
+
+## por 100k habitantes
+casos_municipio_a100k <- round(100000 * datos_municipio[,casos_fechas] / datos_municipio$Pob_Municipio, 1)
+datos_municipio$aumento_2sem_a100k <- round(100000 * datos_municipio$aumento_2sem / datos_municipio$Pob_Municipio, 1)
+
+## tiempo de duplicación ultimas dos semanas
+datos_municipio$dupl_2sem <- round(14 * log(2) / ((log(datos_municipio[,casos_fechas[1]]) - log(datos_municipio[,casos_fechas[15]]))),1)
+
+vector_order <- order(datos_municipio[,casos_fechas[1]], decreasing = TRUE)
+datos_municipio <- datos_municipio[vector_order,]
+casos_municipio_a100k <- casos_municipio_a100k[vector_order,]
+```
+
+
+```{r restimacionRt, echo = FALSE, message = FALSE, warning = FALSE}
+## modelo de distribución de contagios
+my_GT <- generation.time("gamma", c(4, 2), truncate = 14)
+
+## numero de dias en secuencia completa
+m <- 100
+
+## sequencia de fechas completa considerada
+casos_fechas_completo <- paste0("casos",fecha_cadena(fecha_formato - seq(0, m)))
+
+## Calcular incremento diario
+dia <- datos_municipio[,c(casos_fechas_completo)]
+dia_antes <- cbind(datos_municipio[,c(casos_fechas_completo[-1])],data.frame(inicio = rep(0,nrow(datos_municipio))))
+incremento <- dia - dia_antes
+incremento[incremento < 0] <- 0
+incremento[is.na(incremento)] <- 0
+#incremento
+
+Rt_municipio <- c()
+Rt_lower <- c()
+Rt_upper <- c()
+for (i in 1:6) {
+  my_t <- data.frame(t = fecha_formato - seq(0, m-1))
+  #print(dim(my_t))
+  #print(my_t)
+
+  my_casos <- t(incremento[i,casos_fechas_completo[1:m]])  
+  #print(dim(my_casos))
+  #print(my_casos)
+  
+  ## estimación con el modelo elegido
+  tryCatch({
+    my_R0 <- est.R0.TD(epid = my_casos[m:1,1], n.t0 = my_casos[m,1], my_GT, t = my_t[m:1,"t"], nsim = 500, time.step = 1) 
+    #print(datos_municipio[i,"Nom_Mun"])
+    #plot(my_R0)
+    #str(my_R0) 
+    
+    ## el periodo base para suavisación es 2 semanas, pero en caso que no se puede, se reduce a 3 dias
+    tryCatch({     
+      if (my_R0$end.nb > 14) {
+       smooth_Rt <- smooth.Rt(my_R0, 14)
+      } else {
+       smooth_Rt <- smooth.Rt(my_R0, 3)
+      }    
+      if (length(smooth_Rt$R) > 0) {
+        #Rt_municipio <- c(Rt_municipio, round(tail(smooth_Rt$R, n=1),3))
+        Rt_municipio[i] <- round(tail(smooth_Rt$R, n=1),3)
+        ## en metodo TD intervalos son $lower, en BS intervalo puede ser $CI.lower
+        Rt_lower[i] <-  c(Rt_lower, tail(smooth_Rt$conf.int$lower, n=1))
+        Rt_upper[i] <-  c(Rt_upper, tail(smooth_Rt$conf.int$upper, n=1))
+      } else {
+      #Rt_municipio <-  c(Rt_municipio, 0)
+      Rt_municipio[i] <- 0
+      Rt_lower[i] <-  c(Rt_lower, 0)
+      Rt_upper[i] <-  c(Rt_upper, 0)
+      }
+    }, error = function (e) {
+      Rt_municipio[i] <- 0
+      Rt_lower[i] <-  c(Rt_lower, 0)
+      Rt_upper[i] <-  c(Rt_upper, 0)
+    }
+    )
+  }, error = function(e) {  
+      #Rt_municipio <-  c(Rt_municipio, 0)
+      Rt_municipio[i] <- 0
+      Rt_lower[i] <-  c(Rt_lower, 0)
+      Rt_upper[i] <-  c(Rt_upper, 0)
+  }) 
+  
+  ## plot for test purposes
+  #print(my_R0$end)
+  #print(my_R0$R[my_R0$end.nb - 1])
+  #print(smooth_Rt$R)
+  #print(tail(smooth_Rt$R, n=1))  
+  #my_R0 <- estimate.R(epid = my_casos[20:1,1], my_GT, t = my_t[20:1,"t"], nsim = 100, time.step = 1, methods="SB")
+  #print(str(smooth_Rt))
+  #print(my_R0$conf.int$CI.lower[13])
+  #print(my_R0$conf.int$CI.upper[13])
+  #Rt_estado <-  c(Rt_estado, my_R0$R[13])
+ 
+}
+for (i in 7:nrow(datos_municipio)) {
+      Rt_municipio <-  c(Rt_municipio, NA)
+      Rt_lower <-  c(Rt_lower, NA)
+      Rt_upper <-  c(Rt_upper, NA)  
+}
+  
+
+ datos_municipio <- cbind(datos_municipio, data.frame(Rt = Rt_municipio))
+ datos_municipio <- cbind(datos_municipio, data.frame(Rt_lower = Rt_lower))
+ datos_municipio <- cbind(datos_municipio, data.frame(Rt_upper = Rt_upper))
+
+```
+
+
+
+```{r tabla-html, echo = FALSE}
+#DT:::available_plugins()
+# 
+# dt_spanish_json <- '
+# {
+# 	"sProcessing":     "Procesando...",
+# 	"sLengthMenu":     "Mostrar _MENU_ registros",
+# 	"sZeroRecords":    "No se encontraron resultados",
+# 	"sEmptyTable":     "Ningún dato disponible en esta tabla",
+# 	"sInfo":           "Mostrando registros del _START_ al _END_ de un total de _TOTAL_ registros",
+# 	"sInfoEmpty":      "Mostrando registros del 0 al 0 de un total de 0 registros",
+# 	"sInfoFiltered":   "(filtrado de un total de _MAX_ registros)",
+# 	"sInfoPostFix":    "",
+# 	"sSearch":         "Buscar:",
+# 	"sUrl":            "",
+# 	"sInfoThousands":  ",",
+# 	"sLoadingRecords": "Cargando...",
+# 	"oPaginate": {
+# 		"sFirst":    "Primero",
+# 		"sLast":     "Último",
+# 		"sNext":     "Siguiente",
+# 		"sPrevious": "Anterior"
+# 	},
+# 	"oAria": {
+# 		"sSortAscending":  ": Activar para ordenar la columna de manera ascendente",
+# 		"sSortDescending": ": Activar para ordenar la columna de manera descendente"
+# 	},
+# 	"buttons": {
+# 	              "print": "Imprimir",
+#                 "printTitle": "Imprimir"
+# 	}
+# }
+# '
+# tabla1_pie <- "Tabla 1. 
+# Cambios en número acumulado de casos durante las últimas dos semanas, incidencia por 100 mil habitantes,
+# tiempo de duplicación (TD) promedio y número reproductivo efectivo (Rt) 
+# a la fecha del reporte.
+# "
+# 
+# DT::datatable(cbind(
+#                 datos_municipio[,c("Nom_Mun", casos_fechas[15], casos_fechas[8], casos_fechas[2], casos_fechas[1])],
+#                 casos_municipio_a100k[,casos_fechas[1]],
+#                 datos_municipio[,c("aumento_2semt", "dupl_2sem", "Rt"
+#                                    )]
+#               ), 
+#          colnames = c("Municipios","Hace 2 semanas","Hace 1 semana","Ayer","Hoy",
+#                       "Por 100k","Aumento en 2 semanas","TD, días","Rt"
+#                       ),
+#          caption = htmltools::tags$caption(tabla1_pie),
+#          extensions = c('FixedColumns',"FixedHeader","Buttons"),
+#          class = 'hover cell-border',
+#          style = 'default',
+#          width = "900px",
+#          autoHideNavigation = TRUE,
+# 
+#           options = list(scrollX = FALSE, 
+#                          paging=TRUE,
+#                          fixedHeader=TRUE,
+#                          dom = 'Bfrtip',
+#                          buttons = c('csv','print'),
+#                          #language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json'),
+#                          language = JS(dt_spanish_json),
+#                          pageLength = 10,
+#                          lengthMenu = c(5, 10, 15, 20),
+#                           autoWidth = TRUE,
+#                           columnDefs = list(
+#                               list(width = '40px', targets = c(2,3,4,5,6,8,9)),
+#                               list(width = '80px', targets = c(7)),
+#                               list(className = 'dt-center', targets = c(2,3,4,5,6,7,8,9))
+#                           )                         
+#                          ))
+```
+
+```{r echo = FALSE}
+
+ 
+datos_municipio <- datos_municipio[1:300,]
+casos_municipio_a100k <- casos_municipio_a100k[1:300,]
+```
+
+
+```{r echo=FALSE}
+## Función para generar leyenda con circulos
+ addLegendCustom <- function(map, title, colors, labels, sizes, position, group, opacity = 0.5) {
+  colorAdditions <- paste0(colors, " !important; -webkit-print-color-adjust: exact; border-radius: 50%; width:", sizes, "px; height:", sizes, "px")
+  labelAdditions <- paste0("<div style='display: inline-block; height: ", 
+                           sizes, "px; margin-top: 4px; line-height: ", sizes, "px;'>", 
+                           labels, "</div>")
+  return(addLegend(map, colors = colorAdditions, 
+                   labels = labelAdditions, opacity = opacity, 
+                   position = position, group = group, title = title))
+ }
+
+filterHighLevel <- function(labels) {
+  labels[labels < 20] <- ""
+  return(as.character(labels))
+}
+
+getColor <- function(mag) {
+  sapply(mag, function(mag_col) {
+  if(mag_col <= 2) {
+    "darkgreen"
+  } else if(mag_col <= 5) {
+    "yellow"
+  } else if(mag_col <= 10) {
+    "orange"
+  } else if(mag_col <= 30) {
+    "coral"
+  } else {
+    "red"
+  } })
+}
+
+filterHighLevel <- function(labels) {
+  labels[labels < 5] <- ""
+  return(as.character(labels))
+}
+filterHighLevelP <- function(labels) {
+  #labels[labels < 1] <- ""
+  labels[labels != ""] <- paste0(labels,'%')
+  return(as.character(labels))
+}
+
+```
+
+
+```{r fig.width = 10, fig.height = 8, warning = FALSE, echo = FALSE}
+## Mapa de casos confirmados de COVID-19 por municipio para `r fecha`
+
+
+#str(datos_municipio)
+
+ m2 <- leaflet()
+ m2 <- addTiles(m2)
+ m2 <- setView(m2, lng=-100, lat=24, zoom = 5)
+ 
+  ## layers
+ m2 <- addCircleMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+                        weight = 5 * log(datos_municipio[,casos_fechas[1]] + 1), radius = 0, 
+                  color= "red", stroke = TRUE, fillOpacity = 1, group = "casos acumulados")
+ m2 <- addLabelOnlyMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+    label = filterHighLevel(datos_municipio[,casos_fechas[1]]), group = "casos acumulados",
+    labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T,
+                    style = list("color" = "white","font-size" = "11px")))
+ 
+ m2 <- addCircleMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+                        #weight = 5 * log(casos_municipio_a100k[,casos_fechas[1]] + 1), radius = 0,
+                        weight = 20 * log(datos_municipio$casos_hoy100k / 100 + 1), radius = 0, 
+                  color= "darkred", stroke = TRUE, fillOpacity = 1, group = "casos acumulados por 100k")
+ m2 <- addLabelOnlyMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+    #label = filterHighLevel(casos_municipio_a100k[,casos_fechas[1]]), group = "casos acumulados por 100k",
+    label = filterHighLevel(round(datos_municipio$casos_hoy100k,0)), group = "casos acumulados por 100k",
+    labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T,
+                    style = list("color" = "white","font-size" = "11px"))) 
+ 
+ m2 <- addCircleMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+                        weight = 5 * log(datos_municipio[,casos_fechas[15]] + 1), radius = 0, 
+                  color= "red", stroke = TRUE, fillOpacity = 1, group = "casos hace dos semanas")
+ m2 <- addLabelOnlyMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+    label = filterHighLevel(datos_municipio[,casos_fechas[15]]), group = "casos hace dos semanas",
+    labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T,
+                    style = list("color" = "white","font-size" = "11px")))
+ 
+ m2 <- addCircleMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+                        weight = 10 * log(datos_municipio[,casos_fechas[1]] - datos_municipio[,casos_fechas[15]] + 1), radius = 0, 
+                  color= "black", stroke = TRUE, fillOpacity = 1, group = "aumento en dos semanas")
+ m2 <- addLabelOnlyMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+    label = filterHighLevel(datos_municipio[,casos_fechas[1]] - datos_municipio[,casos_fechas[15]]), group = "aumento en dos semanas",
+    labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T,
+                    style = list("color" = "white","font-size" = "11px"))) 
+
+ m2 <- addCircleMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+                        weight = 10 * log(datos_municipio$aumento_2semp + 1), radius = 0, 
+                  color= "black", stroke = TRUE, fillOpacity = 1, group = "aumento en dos semanas %")
+ m2 <- addLabelOnlyMarkers(m2, lng = datos_municipio$Lon_Decimal, lat = datos_municipio$Lat_Decimal, 
+    label = filterHighLevelP(round(datos_municipio$aumento_2semp,0)), group = "aumento en dos semanas %",
+    labelOptions = labelOptions(noHide = T, direction = 'center', textOnly = T,
+                    style = list("color" = "white","font-size" = "11px"))) 
+
+
+ m2 <- addLegendCustom(m2, 
+                      title = "aumento de casos",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("black", "black", "black"), 
+                      labels = c("+2", "+5","+20"), 
+                      sizes = c(10 * log(2),
+                                10 * log(5),
+                                10 * log(20)
+                                ))  
+
+   m2 <- addLegendCustom(m2, 
+                      title = "por 100 mil habitantes",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("darkred", "darkred", "darkred", "darkred"), 
+                      labels = c("1-100","100-200", "200-300", ">300"), 
+                      sizes = c(
+                                20 * log(100/50),
+                                20 * log(200/50), 
+                                20 * log(300/50), 
+                                20 * log(400/50)
+                                )) 
+  m2 <- addLegendCustom(m2, 
+                      title = "casos de COVID-19",
+                      group = "leyenda",
+                      position = "bottomleft",
+                      colors = c("red", "red", "red", "red"), 
+                      labels = c("1-5","5-20", "20-100", ">100"), 
+                      sizes = c(
+                                5 * log(5),
+                                5 * log(20), 
+                                5 * log(100), 
+                                5 * log(500)
+                                ))
+ m2 <- addLayersControl(m2,
+                       baseGroups = c("casos acumulados",
+                                      "casos acumulados por 100k",
+                                      "casos hace dos semanas",
+                                      "aumento en dos semanas",
+                                      "aumento en dos semanas %"
+                                      ),
+                       overlayGroups = c("leyenda"),
+                       options = layersControlOptions(collapsed = FALSE))  
+ #m2
+```
+
+## Mapa de casos confirmados de COVID-19 por municipio en Jalisco y en los estados colindantes para `r fecha`
+
+Nota: mapa puede tardar unos segundos en aparecer
+
+```{r fig.width = 10, fig.height = 8, warning = FALSE, echo = FALSE}
+ m2_jal <- setView(m2, lng=-103.3, lat=20.9, zoom = 8)
+ m2_jal
+ knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+

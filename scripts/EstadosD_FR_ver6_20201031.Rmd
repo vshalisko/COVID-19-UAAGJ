@@ -1,0 +1,686 @@
+---
+title: "Tratamiento datos COVID-19 México 31/10/2020"
+author: "Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L."
+date: "31/10/2020"
+output:
+  html_document: 
+    css: mystyle.css
+---
+
+```{r variables-ajustables, echo = FALSE}
+fecha <- "31 de octubre del 2020"
+fecha_formato <- "2020-10-31"
+```
+
+#### Última actualización `r fecha`
+#### Authores: Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L.
+#### Versión 6.1
+#### Datos fuente
+Datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Fuentes auxiliares
+Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> y Catálogo Único de Claves de Áreas Geoestadísticas Estatales, Municipales y Localidades de INEGI <https://www.inegi.org.mx/app/ageeml/>
+
+```{r echo = FALSE}
+knitr::opts_chunk$set(error = TRUE)
+library(htmltools)
+library(DT)
+library(MASS)
+library(R0)
+#library(leaflet)
+#library(sp)
+
+## numero de dias al pasado que se consideraran (además del dia de fecha)
+n <- 31
+
+## Codigo HTML para boton de Creative Commons 
+cc_html <- '<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a>.'
+```
+
+```{css, echo=FALSE}
+```
+
+```{r subrutinas, echo = FALSE}
+
+fecha_formato <- as.Date(fecha_formato)
+
+fecha_cadena <- function(mi_f) {
+  ## Como esxtraer partes de fecha
+  ## dia
+  #as.POSIXlt(fecha_formato)$mday
+  ## mes
+  #as.POSIXlt(fecha_formato)$mon + 1
+  ## año
+  #as.POSIXlt(fecha_formato)$year + 1900
+    
+  mi_cadena <- paste0(  
+    sprintf("%02d", as.POSIXlt(mi_f)$year - 100),
+    sprintf("%02d", as.POSIXlt(mi_f)$mon + 1),
+    sprintf("%02d", as.POSIXlt(mi_f)$mday)
+  )
+  return(mi_cadena)
+}
+
+file_by_date <- function (mi_f) {
+  ## funcion regresa nombre del archivo con ruta basandose en su fecha
+  ## prefijo de ruta
+  mi_pr <- "../datos/"
+  ## postfijo de ruta
+  mi_po <- "COVID19MEXICO.csv"
+  mi_file <- paste0(mi_pr, fecha_cadena(mi_f), mi_po)
+  return(mi_file)
+}
+```
+
+# ANALISIS MÉXICO
+## Defunciones por COVID-19 por fecha de reporte en datos de SSA Federal
+
+```{r datos, echo = FALSE}
+## lectura de datos
+## hacer tabla de inicio con nombres de estados
+datos_estado <- readRDS(paste0("object_estado_",fecha_formato,".rds"))
+## hacer tabla de inicio con nombres de estados
+datos_municipio <- readRDS(paste0("object_municipio_",fecha_formato,".rds"))
+```
+
+
+```{r subtotales, echo = FALSE}
+casos_fechas <- paste0("casos",fecha_cadena(fecha_formato - seq(0, n)))
+neg_fechas <- paste0("neg",fecha_cadena(fecha_formato - seq(0, n)))
+pend_fechas <- paste0("pend",fecha_cadena(fecha_formato - seq(0, n)))
+def_fechas <- paste0("def",fecha_cadena(fecha_formato - seq(0, n)))
+hosp_fechas <- paste0("hosp",fecha_cadena(fecha_formato - seq(0, n)))
+uci_fechas <- paste0("uci",fecha_cadena(fecha_formato - seq(0, n)))
+
+#datos_estado[,c("Estado",casos_fechas)]
+#datos_estado[,c("Estado",neg_fechas)]
+#datos_estado[,c("Estado",pend_fechas)]
+#datos_estado[,c("Estado",def_fechas)]
+#datos_estado[,c("Estado",hosp_fechas)]
+#datos_estado[,c("Estado",uci_fechas)]
+
+casos_nac <- apply(datos_estado[,casos_fechas], 2 , sum)
+neg_nac <- apply(datos_estado[,neg_fechas], 2 , sum)
+pend_nac <- apply(datos_estado[,pend_fechas], 2 , sum)
+def_nac <- apply(datos_estado[,def_fechas], 2 , sum)
+hosp_nac <- apply(datos_estado[,hosp_fechas], 2 , sum)
+uci_nac <- apply(datos_estado[,uci_fechas], 2 , sum)
+```
+
+
+### Defunciones por COVID-19 confirmados a nivel nacional
+##### Total de defunciones registrados para el día `r fecha_formato`: **`r def_nac[1]`**. 
+##### Nuevos registros de defunción desde ayer: **`r def_nac[1] - def_nac[2]`** (**`r round(100 * (def_nac[1] - def_nac[2]) / def_nac[2], 2)`%**). 
+##### Nuevos registros de defunción durante la última semana (desde `r fecha_formato - 6` hasta `r fecha_formato`): **`r def_nac[1] - def_nac[8]`** (**`r round(100 * (def_nac[1] - def_nac[8]) / def_nac[8], 2)`%**).
+##### Nuevos registros de defunción durante la semana anterior (desde `r fecha_formato - 13` hasta `r fecha_formato - 7`): **`r def_nac[8] - def_nac[15]`** (**`r round(100 * (def_nac[8] - def_nac[15]) / def_nac[15], 2)`%**).
+##### Nuevos registros de defunción durante la semana desde `r fecha_formato - 19` hasta `r fecha_formato - 14`: **`r format(def_nac[15] - def_nac[21], digits = 6)`** (**`r round(100 * (def_nac[15] - def_nac[21]) / def_nac[21], 2)`%**).
+##### Nuevos registros de defunción durante las últimas dos semanas (desde `r fecha_formato - 13` hasta `r fecha_formato`): **`r def_nac[1] - def_nac[15]`** (**`r round(100 * (def_nac[1] - def_nac[15]) / def_nac[15], 2)`%**).
+
+### Resumen de defunciones confirmados por estado
+
+```{r datos-para-tabla, echo = FALSE}
+datos_estado$aumento_2sem <- datos_estado[,def_fechas[1]] - datos_estado[,def_fechas[15]]
+datos_estado$aumento_2semp <- round(100 * datos_estado$aumento_2sem / datos_estado[,def_fechas[15]],1)
+datos_estado$aumento_2semt <- paste0(datos_estado$aumento_2sem," (",datos_estado$aumento_2semp,"%)")
+
+datos_estado$aumento_hoy <- datos_estado[,def_fechas[1]] - datos_estado[,def_fechas[2]]
+datos_estado$aumento_hoyp <- round(100 * datos_estado$aumento_hoy / datos_estado[,def_fechas[2]],1)
+datos_estado$aumento_hoyt <- paste0(datos_estado$aumento_hoy," (",datos_estado$aumento_hoyp,"%)")
+
+#datos_estado$casos_hoy100k <- round(100000 * datos_estado[,casos_fechas[1]] / datos_estado$Poblacion, 1)
+## por 100k habitantes
+def_estado_a100k <- round(100000 * datos_estado[,def_fechas] / datos_estado$Poblacion, 1)
+
+## tiempo de duplicación ultimas dos semanas
+datos_estado$dupl_2sem <- round(14 * log(2) / ((log(datos_estado[,def_fechas[1]]) - log(datos_estado[,def_fechas[15]]))),1)
+```
+
+
+```{r tabla-html, echo = FALSE}
+#DT:::available_plugins()
+
+dt_spanish_json <- '
+{
+	"sProcessing":     "Procesando...",
+	"sLengthMenu":     "Mostrar _MENU_ registros",
+	"sZeroRecords":    "No se encontraron resultados",
+	"sEmptyTable":     "Ningún dato disponible en esta tabla",
+	"sInfo":           "Mostrando registros del _START_ al _END_ de un total de _TOTAL_ registros",
+	"sInfoEmpty":      "Mostrando registros del 0 al 0 de un total de 0 registros",
+	"sInfoFiltered":   "(filtrado de un total de _MAX_ registros)",
+	"sInfoPostFix":    "",
+	"sSearch":         "Buscar:",
+	"sUrl":            "",
+	"sInfoThousands":  ",",
+	"sLoadingRecords": "Cargando...",
+	"oPaginate": {
+		"sFirst":    "Primero",
+		"sLast":     "Último",
+		"sNext":     "Siguiente",
+		"sPrevious": "Anterior"
+	},
+	"oAria": {
+		"sSortAscending":  ": Activar para ordenar la columna de manera ascendente",
+		"sSortDescending": ": Activar para ordenar la columna de manera descendente"
+	},
+	"buttons": {
+	              "print": "Imprimir",
+                "printTitle": "Imprimir"
+	}
+}
+'
+tabla1_pie <- "Tabla 1. Cambios en número acumulado de defunciones durante las últimas dos semanas, defunciones por 100 mil habitantes,
+tiempo de duplicación de defunciones (TD) promedio en el período."
+
+DT::datatable(cbind(
+                datos_estado[,c("Estado", def_fechas[15], def_fechas[8], def_fechas[2], def_fechas[1])],
+                def_estado_a100k[,def_fechas[1]],
+                datos_estado[,c("aumento_hoyt","aumento_2semt","dupl_2sem")]
+              ), 
+         colnames = c("Estados","Hace 2 semanas","Hace 1 semana","Ayer","Hoy",
+                      "Por 100k","Aumento último día","Aumento en 2 semanas","TD, días"),
+         caption = htmltools::tags$caption(tabla1_pie),
+         extensions = c('FixedColumns',"FixedHeader","Buttons"),
+         class = 'hover cell-border',
+         style = 'default',
+         width = "900px",
+         autoHideNavigation = TRUE,
+
+          options = list(scrollX = FALSE, 
+                         paging=TRUE,
+                         fixedHeader=TRUE,
+                         dom = 'Bfrtip',
+                         buttons = c('csv','print'),
+                         #language = list(url = '//cdn.datatables.net/plug-ins/1.10.11/i18n/Spanish.json'),
+                         language = JS(dt_spanish_json),
+                         pageLength = 10,
+                         lengthMenu = c(5, 10, 15, 20),
+                          autoWidth = TRUE,
+                          columnDefs = list(
+                              list(width = '40px', targets = c(2,3,4,5,6,9)),
+                              list(width = '80px', targets = c(7,8)),
+                              list(className = 'dt-center', targets = c(2,3,4,5,6,7,9))
+                          )                         
+                         ))
+```
+
+### Histogramas de total y nuevos registros de defunción por COVID-19 por estado {.tabset}
+
+```{r echo = FALSE}
+knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 1. 
+Barras grises y los números negros muestran 
+las defunciones acumulados antes de la fecha del análisis del aumento, 
+las barras y números en rojo muestran el aumento durnte el período considerado.
+</div><br />'))
+```
+
+#### Aumento desde ayer
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 5, 4, 2))
+par(mgp=c(4,1,0))
+
+cpen_ymax <- 1.1 * max(datos_estado[,def_fechas[1]])
+
+cpen_barplot <- barplot(height = datos_estado[,def_fechas[1]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "Defunciones por COVID-19",        
+        main = paste("Defunciones por COVID-19 acumulados para", fecha_formato, "y aumento desde el día anterior"))
+
+barplot(height = datos_estado[,def_fechas[2]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado[,def_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = datos_estado[,def_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = datos_estado[,def_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_estado[,def_fechas[1]] - datos_estado[,def_fechas[2]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("defunciones registrados el día anterior", "aumento"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Durante la última semana
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 5, 4, 2))
+par(mgp=c(4,1,0))
+
+cpen_ymax <- 1.1 * max(datos_estado[,def_fechas[1]])
+
+cpen_barplot <- barplot(height = datos_estado[,def_fechas[1]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "Defunciones por COVID-19",        
+        main = paste("Defunciones por COVID-19 acumulados para", fecha_formato, "y aumento desde", fecha_formato - 6))
+
+barplot(height = datos_estado[,def_fechas[8]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado[,def_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = datos_estado[,def_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = datos_estado[,def_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_estado[,def_fechas[1]] - datos_estado[,def_fechas[8]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("defunciones registrados hace una semana", "aumento en la última semana"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Durante la semana pasada
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 5, 4, 2))
+par(mgp=c(4,1,0))
+
+cpen_ymax <- 1.1 * max(datos_estado[,def_fechas[8]])
+
+cpen_barplot <- barplot(height = datos_estado[,def_fechas[8]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "Defunciones por COVID-19",        
+        main = paste("Defunciones por COVID-19 acumulados para", fecha_formato - 7, "y aumento desde", fecha_formato - 13))
+
+barplot(height = datos_estado[,def_fechas[15]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado[,def_fechas[8]] + 0.05 * cpen_ymax, 
+     labels = datos_estado[,def_fechas[8]], cex = 0.7)
+text(x = cpen_barplot, y = datos_estado[,def_fechas[8]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_estado[,def_fechas[8]] - datos_estado[,def_fechas[15]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("defunciones hace dos semanas", "aumento en la semana anterior"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### En últimas dos semanas
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 5, 4, 2))
+par(mgp=c(4,1,0))
+
+cpen_ymax <- 1.1 * max(datos_estado[,def_fechas[1]])
+
+cpen_barplot <- barplot(height = datos_estado[,def_fechas[1]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "Defunciones por COVID-19",
+        main = paste("Defunciones por COVID-19 acumulados para", fecha_formato, "y aumento desde", fecha_formato - 13))
+
+barplot(height = datos_estado[,def_fechas[15]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado[,def_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = datos_estado[,def_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = datos_estado[,def_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", datos_estado[,def_fechas[1]] - datos_estado[,def_fechas[15]], sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("defunciones hace dos semanas", "aumento en dos semanas"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+### Histogramas de total y aumento de defunciones por COVID-19 por 100 mil habitantes por estado {.tabset}
+
+```{r echo = FALSE}
+knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 2. 
+Barras grises y los números negros muestran 
+las defucniones acumulados antes de la fecha del análisis del aumento, 
+las barras y números en rojo muestran el aumento durnte el período considerado.
+</div><br />'))
+```
+
+#### Aumento desde ayer
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(def_estado_a100k[,def_fechas[1]])
+
+cpen_barplot <- barplot(height = def_estado_a100k[,def_fechas[1]],
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "Defunciones por COVID-19 por 100 mil habitantes",
+        main = paste("Defunciones por COVID-19 por 100 mil habitantes para", fecha_formato, "y aumento desde el día anterior"))
+
+barplot(height = def_estado_a100k[,def_fechas[2]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = def_estado_a100k[,def_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", round(def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[2]],1), sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("defunciones registrados el día anterior", "aumento"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Durante la última semana
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(def_estado_a100k[,def_fechas[1]])
+
+cpen_barplot <- barplot(height = def_estado_a100k[,def_fechas[1]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "Defunciones por COVID-19 por 100 mil habitantes",        
+        main = paste("Defunciones por COVID-19 por 100 mil habitantes para", fecha_formato, "y aumento desde", fecha_formato - 6))
+
+barplot(height = def_estado_a100k[,def_fechas[8]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = def_estado_a100k[,def_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", round(def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[8]],1), sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("casos registrados hace una semana", "aumento en la última semana"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Durante la semana pasada
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(def_estado_a100k[,def_fechas[8]])
+
+cpen_barplot <- barplot(height = def_estado_a100k[,def_fechas[8]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "Defunciones por COVID-19 por 100 mil habitantes",        
+        main = paste("Defunciones por COVID-19 por 100 mil habitantes para", fecha_formato - 7, "y aumento desde", fecha_formato - 13))
+
+barplot(height = def_estado_a100k[,def_fechas[15]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[8]] + 0.05 * cpen_ymax, 
+     labels = def_estado_a100k[,def_fechas[8]], cex = 0.7)
+text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[8]] + 0.02 * cpen_ymax, 
+     labels = paste("+", round(def_estado_a100k[,def_fechas[8]] - def_estado_a100k[,def_fechas[15]],1), sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("defunciones hace dos semanas", "aumento en la semana anterior"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### En últimas dos semanas
+
+```{r fig.width = 11, fig.height = 6, echo = FALSE}
+par(mar = c(10, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(def_estado_a100k[,def_fechas[1]])
+
+cpen_barplot <- barplot(height = def_estado_a100k[,def_fechas[1]], 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "Defunciones por COVID-19 por 100 mil habitantes",
+        main = paste("Defunciones por COVID-19 por 100 mil habitantes para", fecha_formato, "y aumento desde", fecha_formato - 13))
+
+barplot(height = def_estado_a100k[,def_fechas[15]], col = "gray", 
+                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] + 0.05 * cpen_ymax, 
+     labels = def_estado_a100k[,def_fechas[1]], cex = 0.7)
+text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] + 0.02 * cpen_ymax, 
+     labels = paste("+", round(def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[15]],1), sep = ""), 
+       col = "red", cex = 0.6)
+
+legend("topright", horiz = TRUE, bty = "n",
+      legend = c("defunciones hace dos semanas", "aumento en dos semanas"),
+      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+
+### Dinámica de defunciones nuevos en últimas semanas {.tabset}
+
+```{r echo = FALSE}
+knitr::asis_output(htmltools::htmlPreserve('<div class="caption">Figura 3.</div><br />'))
+```
+
+#### Defunciones nuevos por día
+
+
+La secuencia de particiones en las barras corresponde a la lista alfabetica de estados.
+
+```{r echo = FALSE,  fig.width = 11, fig.height = 8}
+
+#str(datos_estado)
+#datos_estado[,c("Estado",def_fechas)]
+
+dia <- datos_estado[,c(def_fechas)]
+dia_antes <- cbind(datos_estado[,c(def_fechas[-1])],data.frame(inicio = rep(0,32)))
+#dia
+#dia_antes
+incremento <- dia - dia_antes
+#incremento
+def_fechas_ok <- def_fechas[seq(length(def_fechas)-1,1)]
+#incremento[,c(def_fechas_ok)]
+
+resaltar <- function (est) {
+   sapply(est, function(estados) {
+     if (estados == 14) {
+    return(4)
+  } else {
+    return(2)
+  } })
+}
+
+library(RColorBrewer)
+miscolores <- function (est) {
+   mapa_de_colores <- data.frame(
+     id = 1:32,
+     ##           1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32  
+     color_br = c(0, 1, 2, 0, 3, 0, 0, 0, 4, 0, 5, 0, 0, 5, 6, 0, 0, 0, 7, 0, 8, 0,11, 0, 9, 0,10, 0, 0,12, 0, 0))
+   
+   sapply(est, function(estados) {
+     if (estados == 14) {
+        return("black")
+      } else if (estados == 28) {
+        return("darkred")        
+      } else if (estados == 27) {
+        return("yellow")       
+      } else if (estados == 24) {
+        return("beige")
+      } else if (estados == 23) {
+        return("gray")
+      } else if (mapa_de_colores[mapa_de_colores$id == estados,"color_br"] > 0) {
+        color_id <- mapa_de_colores[mapa_de_colores$id == estados,"color_br"]
+        return(brewer.pal(n = 12, name = 'Paired')[color_id])
+      } else {
+        return("lightgray")
+      } })
+}
+
+miscolores_vector <- c()
+for (i in 1:32) {
+  miscolores_vector <- c(miscolores_vector, miscolores(i))
+}
+miscolores_vector <- unlist(miscolores_vector)
+#miscolores_vector
+
+mi_incremento <- as.matrix(incremento[,c(def_fechas_ok)])
+colnames(mi_incremento) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+#str(mi_incremento)
+
+x_max <- 1.1 * max(apply(mi_incremento, 2, FUN = sum))
+
+par(cex = 0.8, mar = c(5, 8, 7, 2))
+par(oma=c(0, 0, 0, 0))
+
+barplot(mi_incremento,
+        xlim = c(0,x_max),
+        horiz = TRUE, las = 1,
+        col = miscolores_vector,
+        xlab = "defunciones nuevas registrados",
+        legend.text = TRUE, 
+        
+        # args.legend = list(legend = c("EN PROCESO","NEGATIVO COVID-19","POSITIVO COVID-19"), 
+        #                    border = c("black","black","black"),
+        #                    fill = c("lightgray","lightblue","red"), 
+        #                    bty = "n",
+        #                    x = 400,
+        #                    y = 10
+        #                    )
+        )
+
+legend("topright", legend = datos_estado[,"Estado"], fill=miscolores_vector, ncol = 7, bty = "n", inset=c(-0.05,-0.15), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+
+
+
+```
+
+#### Aumento por 100k
+
+```{r echo = FALSE,  fig.width = 11, fig.height = 8}
+
+par(mar = c(10, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[15]])
+
+cpen_barplot <- barplot(height = round(def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[15]],1), 
+        names.arg = datos_estado$Estado, col = "red",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "aumento de defunciones por COVID-19 por 100 mil habitantes",
+        main = paste("Aumento de defunciones por COVID-19 por 100 mil habitantes entre", fecha_formato - 13, "y", fecha_formato))
+
+#barplot(height = def_estado_a100k[,def_fechas[15]], col = "gray", 
+#                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[15]] + 0.02 * cpen_ymax, 
+     labels = paste("+", round(def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[15]],1), sep = ""), 
+     cex = 0.7)
+#text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] + 0.02 * cpen_ymax, 
+#     labels = paste("+", round(def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[15]],1), sep = ""), 
+#       col = "red", cex = 0.6)
+
+#legend("topright", horiz = TRUE, bty = "n",
+#      legend = c("casos hace dos semanas", "aumento en dos semanas"),
+#      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+#### Aumento en porcientos
+
+```{r echo = FALSE,  fig.width = 11, fig.height = 8}
+
+par(mar = c(10, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(datos_estado$aumento_2semp)
+
+cpen_barplot <- barplot(height = datos_estado$aumento_2semp, 
+        names.arg = datos_estado$Estado, col = "darkgray",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "aumento dde defunciones por COVID-19 (%)",
+        main = paste("Aumento de defunciones por COVID-19 en porcientos entre", fecha_formato - 13, "y", fecha_formato))
+
+#barplot(height = def_estado_a100k[,def_fechas[15]], col = "gray", 
+#                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado$aumento_2semp + 0.02 * cpen_ymax, 
+     labels = paste(round(datos_estado$aumento_2semp,0), "%", sep = ""), 
+     cex = 0.7)
+#text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] + 0.02 * cpen_ymax, 
+#     labels = paste("+", round(def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[15]],1), sep = ""), 
+#       col = "red", cex = 0.6)
+
+#legend("topright", horiz = TRUE, bty = "n",
+#      legend = c("casos hace dos semanas", "aumento en dos semanas"),
+#      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+
+#### Tiempo de duplicación de número de defunciones (TD)
+
+```{r echo = FALSE,  fig.width = 11, fig.height = 8}
+
+par(mar = c(10, 4, 4, 2))
+par(mgp=c(3,1,0))
+
+cpen_ymax <- 1.1 * max(datos_estado$dupl_2sem)
+
+cpen_barplot <- barplot(height = datos_estado$dupl_2sem, 
+        names.arg = datos_estado$Estado, col = "beige",
+        las = 2, ylim = c(0, cpen_ymax),
+        ylab = "tiempo de duplicación de número de defunciones (días)",
+        main = paste("Tiempo de duplicación de defunciones por COVID-19 observado entre", fecha_formato - 13, "y", fecha_formato))
+
+#barplot(height = def_estado_a100k[,def_fechas[15]], col = "gray", 
+#                        axes = FALSE, add = TRUE)
+
+text(x = cpen_barplot, y = datos_estado$dupl_2sem + 0.02 * cpen_ymax, 
+     labels = datos_estado$dupl_2sem, 
+     cex = 0.7)
+#text(x = cpen_barplot, y = def_estado_a100k[,def_fechas[1]] + 0.02 * cpen_ymax, 
+#     labels = paste("+", round(def_estado_a100k[,def_fechas[1]] - def_estado_a100k[,def_fechas[15]],1), sep = ""), 
+#       col = "red", cex = 0.6)
+
+#legend("topright", horiz = TRUE, bty = "n",
+#      legend = c("casos hace dos semanas", "aumento en dos semanas"),
+#      fill = c("gray","red"), inset=c(-0.05,-0.1), xpd=TRUE)
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+```
+
+
+```{r echo = FALSE}
+## Pruebas (quedara excluido del producto final)
+
+#matplot(t(datos_estado[,c(def_fechas)]), type = "l")
+#matplot(t(incremento[,c(def_fechas_ok)]), type = "l", col = 1:32, lty = 1)
+#matplot(datos_estado[,"Estado"], datos_estado[,c(def_fechas)], type = 'l', 
+#        xlim = c(0, 15),
+#        xlab = "topics", ylab = "event", col = 2:4, pch = 1)
+#legend("topright", legend = datos_estado[,"Estados"], pch = 1, col=2:4)
+
+
+#casos_total <- apply(datos_estado[,def_fechas], 2 , sum)
+#casos_total <- casos_total[seq(length(casos_total),1)]
+#casos_dia <- casos_total - c(casos_total[-1],0)
+
+
+#plot(casos_dia, type = "b")
+
+#plot(datos_estado[,def_fechas], type = "l", lty = 1)
+#plot(apply(datos_estado[,def_fechas], 2 , sum), type = "b")
+```
