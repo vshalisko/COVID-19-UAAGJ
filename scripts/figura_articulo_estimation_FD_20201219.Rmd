@@ -1,0 +1,578 @@
+---
+title: "Tratamiento datos COVID-19 México 19/12/2020"
+author: "Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L."
+date: "19/12/2020"
+output:
+  html_document: 
+    css: mystyle.css
+---
+
+```{r variables-ajustables, echo = FALSE}
+fecha <- "19 de diciembre del 2020"
+fecha_formato <- "2020-12-19"
+```
+
+#### Última actualización `r fecha`
+#### Authores: Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L.
+#### Versión 6.1
+#### Datos fuente
+Datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Fuentes auxiliares
+Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> y Catálogo Único de Claves de Áreas Geoestadísticas Estatales, Municipales y Localidades de INEGI <https://www.inegi.org.mx/app/ageeml/>
+
+```{r echo = FALSE}
+knitr::opts_chunk$set(error = TRUE)
+library(zoo)
+library(htmltools)
+library(DT)
+library(MASS)
+library(R0)
+#library(leaflet)
+#library(sp)
+
+## numero de dias al pasado que se consideraran (además del dia de fecha)
+n <- 280
+omision <- 15
+
+# tiempo promedio desde sintomas hasta defucnion
+t_defuncion <- 21
+
+# tasas de mortalidad
+tasa_m1 <- 0.031
+tasa_m2 <- 0.014
+
+
+## Codigo HTML para boton de Creative Commons 
+cc_html <- '<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a>.'
+```
+
+# Estimacion de casos potenciales a partir de datos sobre defunciones (FD)
+
+```{r subrutinas, echo = FALSE}
+
+fecha_formato <- as.Date(fecha_formato)
+
+fecha_cadena <- function(mi_f) {
+  ## Como esxtraer partes de fecha
+  ## dia
+  #as.POSIXlt(fecha_formato)$mday
+  ## mes
+  #as.POSIXlt(fecha_formato)$mon + 1
+  ## año
+  #as.POSIXlt(fecha_formato)$year + 1900
+    
+  mi_cadena <- paste0(  
+    sprintf("%02d", as.POSIXlt(mi_f)$year - 100),
+    sprintf("%02d", as.POSIXlt(mi_f)$mon + 1),
+    sprintf("%02d", as.POSIXlt(mi_f)$mday)
+  )
+  return(mi_cadena)
+}
+
+file_by_date <- function (mi_f) {
+  ## funcion regresa nombre del archivo con ruta basandose en su fecha
+  ## prefijo de ruta
+  mi_pr <- "../datos/"
+  ## postfijo de ruta
+  mi_po <- "COVID19MEXICO.csv"
+  mi_file <- paste0(mi_pr, fecha_cadena(mi_f), mi_po)
+  return(mi_file)
+}
+
+```
+
+# ANALISIS MÉXICO
+## Casos positivos de COVID-19 por fecha de inicio de síntomas
+
+```{r datos, echo = FALSE}
+## lectura de datos
+datos_estado <- readRDS(paste0("../scripts_tratamiento_nuevo/","object_estado_FD_",fecha_formato,".rds"))
+datos_municipio <- readRDS(paste0("../scripts_tratamiento_nuevo/","object_municipio_FD_",fecha_formato,".rds"))
+#str(datos_estado)
+
+datos_estado_RJ <- readRDS(paste0("../scripts_tratamiento_nuevo/","object_estado_RJ_",fecha_formato,".rds"))
+datos_municipio_RJ <- readRDS(paste0("../scripts_tratamiento_nuevo/","object_municipio_RJ_",fecha_formato,".rds"))
+```
+
+```{r echo = TRUE}
+#datos_estado <- datos_estado[datos_estado$CLAVE_ENTIDAD == 14,]
+## seleccionar solo municipios de Jalisco
+datos_municipio <- datos_municipio[datos_municipio$CLAVE_ENTIDAD == 14,]
+datos_municipio <- datos_municipio[datos_municipio$Nom_Mun != "NO ESPECIFICADO",]
+
+#str(datos_municipio)
+datos_municipio_RJ <- datos_municipio_RJ[datos_municipio_RJ$CLAVE_ENTIDAD == 14,]
+datos_municipio_RJ <- datos_municipio_RJ[datos_municipio_RJ$Nom_Mun != "NO ESPECIFICADO",]
+```
+
+```{r subtotales, echo = FALSE}
+casos_fechas <- paste0("casos",fecha_cadena(fecha_formato - seq(0, n)))
+neg_fechas <- paste0("neg",fecha_cadena(fecha_formato - seq(0, n)))
+pend_fechas <- paste0("pend",fecha_cadena(fecha_formato - seq(0, n)))
+def_fechas <- paste0("def",fecha_cadena(fecha_formato - seq(0, n)))
+hosp_fechas <- paste0("hosp",fecha_cadena(fecha_formato - seq(0, n)))
+uci_fechas <- paste0("uci",fecha_cadena(fecha_formato - seq(0, n)))
+```
+
+```{r}
+#str(datos_estado)
+#datos_estado[,c("Estado",casos_fechas)]
+
+metadatos <- datos_estado[,1:8]
+dia <- datos_estado[,c(def_fechas)]
+dia_antes <- cbind(datos_estado[,c(def_fechas[-1])],data.frame(inicio = rep(0,32)))
+incremento <- dia - dia_antes
+def_fechas_ok <- def_fechas[seq(length(def_fechas)-1,1)]
+
+resaltar <- function (est) {
+   sapply(est, function(estados) {
+     if (estados == 14) {
+    return(4)
+  } else {
+    return(2)
+  } })
+}
+
+library(RColorBrewer)
+miscolores <- function (est) {
+   mapa_de_colores <- data.frame(
+     id = 1:32,
+     ##           1  2  3  4  5  6  7  8  9 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28 29 30 31 32  
+     color_br = c(0, 1, 2, 0, 3, 0, 0, 0, 4, 0, 5, 0, 0, 5, 6, 0, 0, 0, 7, 0, 8, 0,11, 0, 9, 0,10, 0, 0,12, 0, 0))
+   
+   sapply(est, function(estados) {
+     if (estados == 14) {
+        return("black")
+      } else if (estados == 28) {
+        return("darkred")        
+      } else if (estados == 27) {
+        return("yellow")       
+      } else if (estados == 24) {
+        return("beige")
+      } else if (estados == 23) {
+        return("gray")
+      } else if (mapa_de_colores[mapa_de_colores$id == estados,"color_br"] > 0) {
+        color_id <- mapa_de_colores[mapa_de_colores$id == estados,"color_br"]
+        return(brewer.pal(n = 12, name = 'Paired')[color_id])
+      } else {
+        return("lightgray")
+      } })
+}
+
+miscolores_vector <- c()
+
+for (i in 1:32) {
+  miscolores_vector <- c(miscolores_vector, miscolores(i))
+}
+miscolores_vector <- unlist(miscolores_vector)
+#miscolores_vector
+
+mi_incremento <- as.matrix(incremento[,c(def_fechas_ok)])
+colnames(mi_incremento) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+#str(mi_incremento)
+
+#estados_order <- c(1:32)
+estados_order <- order(dia[,def_fechas[15]], decreasing = TRUE)
+metadatos_ordenado <- metadatos[estados_order,]
+mi_incremento_ordenado <- mi_incremento[estados_order,]
+
+x_max <- 1.1 * max(apply(mi_incremento, 2, FUN = sum))
+
+par(cex = 0.8, mar = c(5, 8, 7, 2))
+par(oma=c(0, 0, 0, 0))
+
+## cortar últimos registros para visualización
+length_visulal <- ncol(mi_incremento) - omision
+```
+
+
+#### Casos nuevos por día
+
+La secuencia de particiones en las barras corresponde a la lista alfabética de estados.
+
+```{r echo = FALSE,  fig.width = 40, fig.height = 10}
+
+barplot(mi_incremento_ordenado[,1:length_visulal],
+        ylim = c(0,x_max),
+        main = paste0("Defunciones por COVID-19 por fecha de defunción"),
+        horiz = FALSE, las = 1,
+        col = miscolores_vector[estados_order],
+        ylab = "casos nuevos registrados por día",
+        legend.text = TRUE
+        )
+
+abline(h = 2000, col = "lightgray", lty = 3)
+abline(h = 4000, col = "lightgray", lty = 3)
+abline(h = 6000, col = "lightgray", lty = 3)
+abline(h = 8000, col = "lightgray", lty = 3)
+
+legend("topleft", legend = datos_estado[estados_order,"Estado"], fill=miscolores_vector[estados_order], ncol = 7, bty = "n", xpd=TRUE)
+
+```
+
+```{r  fig.width = 20, fig.height = 10}
+
+barplot(mi_incremento[14,1:length_visulal],
+        horiz = FALSE, las = 1,
+        ylim = c(0,100),
+        main = paste0("Defunciones por COVID-19 por fecha de defunción en Jalisco"),
+        density = 10, angle = 45,
+        col = miscolores_vector[14],
+        ylab = "casos nuevos registrados"
+  )
+
+abline(h = 100, col = "lightgray", lty = 3)
+abline(h = 200, col = "lightgray", lty = 3)
+abline(h = 300, col = "lightgray", lty = 3)
+abline(h = 400, col = "lightgray", lty = 3)
+abline(h = 500, col = "lightgray", lty = 3)
+abline(h = 600, col = "lightgray", lty = 3)
+abline(h = 700, col = "lightgray", lty = 3)
+abline(h = 800, col = "lightgray", lty = 3)
+abline(h = 900, col = "lightgray", lty = 3)
+
+legend("topleft", legend = c("Radar Jalisco", "SSA Federal"), 
+       fill = c("darkgray","darkgray"),
+       angle = c(NA,45), density = c(NA,10),
+       ncol = 2, bty = "n", xpd=TRUE) 
+
+```
+
+```{r}
+casos_fechas_ok <- casos_fechas[seq(length(casos_fechas)-1,1)]
+
+metadatos_m <- datos_municipio[,1:12]
+dia_m <- datos_municipio[,c(casos_fechas)]
+dia_antes_m <- cbind(datos_municipio[,c(casos_fechas[-1])],data.frame(inicio = rep(0,dim(datos_municipio)[1])))
+incremento_m <- dia_m - dia_antes_m
+incremento_m_a100k <- round(100000 * incremento_m / datos_municipio$Pob_Municipio, 1)
+
+metadatos_m_RJ <- datos_municipio_RJ[,1:12]
+dia_RJ_m <- datos_municipio_RJ[,c(casos_fechas)]
+dia_antes_RJ_m <- cbind(datos_municipio_RJ[,c(casos_fechas[-1])],data.frame(inicio = rep(0,dim(datos_municipio_RJ)[1])))
+incremento_RJ_m <- dia_RJ_m - dia_antes_RJ_m
+incremento_RJ_m_a100k <- round(100000 * incremento_RJ_m / datos_municipio_RJ$Pob_Municipio, 1)
+
+incremento_RJ_m_a100k <- cbind(metadatos_m_RJ,incremento_RJ_m_a100k)
+```
+
+
+```{r}
+def_fechas_ok <- def_fechas[seq(length(def_fechas)-1,1)]
+
+metadatos_m <- datos_municipio[,1:12]
+dia_m <- datos_municipio[,c(def_fechas)] / tasa_m2
+dia_antes_m <- cbind(datos_municipio[,c(def_fechas[-1])],data.frame(inicio = rep(0,dim(datos_municipio)[1]))) / tasa_m2
+incremento_d_m <- dia_m - dia_antes_m
+incremento_d_m_a100k <- round(100000 * incremento_d_m / datos_municipio$Pob_Municipio, 3)
+```
+
+```{r}
+mi_incremento_m <- as.matrix(incremento_m[,c(casos_fechas_ok)])
+colnames(mi_incremento_m) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+
+mi_incremento_m_a100k <- as.matrix(incremento_m_a100k[,c(casos_fechas_ok)])
+colnames(mi_incremento_m_a100k) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+
+municipios_order <- order(dia_m[,casos_fechas[15]], decreasing = TRUE)
+metadatos_ordenado_m <- metadatos_m[municipios_order,]
+mi_incremento_m_ordenado <- mi_incremento_m[municipios_order,]
+mi_incremento_m_a100k_ordenado <- mi_incremento_m_a100k[municipios_order,]
+```
+
+```{r}
+mi_incremento_d_m <- as.matrix(incremento_d_m[,c(def_fechas_ok)])
+colnames(mi_incremento_d_m) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+
+mi_incremento_d_m_a100k <- as.matrix(incremento_d_m_a100k[,c(def_fechas_ok)])
+colnames(mi_incremento_d_m_a100k) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+
+municipios_order <- order(dia_m[,def_fechas[15]], decreasing = TRUE)
+metadatos_ordenado_m <- metadatos_m[municipios_order,]
+mi_incremento_d_m_ordenado <- mi_incremento_d_m[municipios_order,]
+mi_incremento_d_m_a100k_ordenado <- mi_incremento_d_m_a100k[municipios_order,]
+```
+
+
+```{r}
+## preparar datos de subtotales por estado
+
+metadatos_m_J <- data.frame(
+    Clave_Mun_Ent_Texto = "9999",
+    CLAVE_ENTIDAD = 14, 
+    CLAVE_MUNICIPIO = "9999",
+    MUNICIPIO = "JALISCO",
+    Nom_Loc = "Jalisco", 
+    Nom_Mun = "Jalisco",
+    Nom_Ent = "Jalisco",
+    Lat_Decimal = 0,
+    Lon_Decimal = 0,
+    Pob_Localidad = 8409693,
+    Pob_Municipio = 8409693,
+    ABREVIATURA = "JC"
+)
+
+incremento_d_m_Jalisco <- apply(incremento_d_m, 2, sum, na.rm = TRUE)
+incremento_d_m_a100k_Jalisco <- round(100000 * incremento_d_m_Jalisco / metadatos_m_J[1,"Pob_Municipio"], 3)
+incremento_d_m_a100k_Jalisco <- as.data.frame(t(incremento_d_m_a100k_Jalisco))
+#incremento_d_m_a100k_Jalisco <- incremento_d_m_a100k_Jalisco[,ncol(incremento_d_m_a100k_Jalisco):1]
+colnames(incremento_d_m_a100k_Jalisco) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+incremento_d_m_a100k_Jalisco <- as.matrix(incremento_d_m_a100k_Jalisco[,ncol(incremento_d_m_a100k_Jalisco):1])
+str(incremento_d_m_a100k_Jalisco)
+#incremento_d_m_a100k_Jalisco <- cbind(metadatos_m_J, incremento_d_m_a100k_Jalisco)
+#incremento_d_m_a100k_Jalisco
+
+
+
+incremento_m_Jalisco <- apply(incremento_m, 2, sum, na.rm = TRUE)
+incremento_m_a100k_Jalisco <- round(100000 * incremento_m_Jalisco / metadatos_m_J[1,"Pob_Municipio"], 1)
+incremento_m_a100k_Jalisco <- as.data.frame(t(incremento_m_a100k_Jalisco))
+#incremento_m_a100k_Jalisco <- incremento_m_a100k_Jalisco[,ncol(incremento_m_a100k_Jalisco):1]
+colnames(incremento_m_a100k_Jalisco) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+incremento_m_a100k_Jalisco <- as.matrix(incremento_m_a100k_Jalisco[,ncol(incremento_m_a100k_Jalisco):1])
+str(incremento_m_a100k_Jalisco)
+#incremento_m_a100k_Jalisco <- cbind(metadatos_m_J, incremento_m_a100k_Jalisco)
+#incremento_m_a100k_Jalisco
+
+incremento_m_RJ_Jalisco <- apply(incremento_RJ_m, 2, sum, na.rm = TRUE)
+incremento_m_RJ_a100k_Jalisco <- round(100000 * incremento_m_RJ_Jalisco /  metadatos_m_J[1,"Pob_Municipio"], 1)
+incremento_m_RJ_a100k_Jalisco <- as.data.frame(t(incremento_m_RJ_a100k_Jalisco))
+#colnames(incremento_m_RJ_a100k_Jalisco) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+incremento_m_RJ_a100k_Jalisco <- cbind(metadatos_m_J, incremento_m_RJ_a100k_Jalisco[,ncol(incremento_m_RJ_a100k_Jalisco):1])
+#incremento_m_RJ_a100k_Jalisco
+
+
+```
+
+```{r  fig.width = 12, fig.height = 8}
+mi_grafica <- function (nivel, datos_1, datos_2, metadatos_1, modo = 1) {
+
+  select_datos_2 <- as.matrix(datos_2[datos_2$CLAVE_MUNICIPIO == metadatos_1[nivel,3],
+                          c(casos_fechas_ok)])
+  colnames_vector <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+  colnames(select_datos_2) <- colnames_vector
+
+  nombres_eje <- c(format(fecha_formato - seq(n-1, 0), "%b"))[1:length_visulal]
+  dia_eje <- c(format(fecha_formato - seq(n-1, 0), "%d"))[1:length_visulal]
+  
+  if (modo == 1) {
+    titulo <- paste0("Casos de COVID-19 estimados a partir de defunciones en ",metadatos_1[nivel,6])
+  } else {
+    titulo <- ""
+  }
+  
+  mi_barplot <- barplot(datos_1[nivel,1:length_visulal],
+        ylim = c(0,70),
+        main = titulo,
+        horiz = FALSE, las = 1,
+        col = "white",
+        ylab = "casos diarias estimados por 100 mil habitantes", 
+        names.arg = ""
+        )
+
+  barplot(datos_1[nivel,1:length_visulal],
+         horiz = FALSE, las = 1,
+         col = "gray", border = "gray",
+         add = TRUE, names.arg = ""
+         )
+  
+  abline(h = 1, col = "black", lty = 3)
+  abline(h = 2, col = "black", lty = 3)
+
+  abline(v = 22, col = "blue", lty = 2)  
+  abline(v = 57, col = "blue", lty = 2)     
+  abline(v = 277.5, col = "blue", lty = 2)  
+  abline(v = 293, col = "blue", lty = 2) 
+  
+  if ((modo == 2) || (modo == 3)) {
+    
+    legend(x = -10, y = 1.8, metadatos_1[nivel,6], cex = 1.5, box.col = "white", bg = "white", adj = 0)
+    #text(x = 0, y = 17, labels = metadatos_1[nivel,6], cex = 1.5, adj = 0)
+  }
+
+  #print(mi_barplot)
+  label.index <- which(as.numeric(dia_eje) == 15) 
+  minor.index <- which(as.numeric(dia_eje) == 1) 
+  #print(mi_barplot[label.index])
+  #print(nombres_eje[label.index])
+  
+  axis(side = 1, at = mi_barplot[minor.index], labels = FALSE, tcl = -0.5)
+  axis(side = 1, at = mi_barplot[label.index], labels = nombres_eje[label.index], tcl = -0.5, col.ticks = "white")
+  
+  if ((modo == 1) || (modo == 3)) {
+  legend(#"topleft", 
+        x = -10,
+        y = 30,
+        legend = c("SSA Federal","promedio semanal"), 
+        fill = c("gray", NA),
+        border = c("black",NA),
+        lwd = c(NA,2),
+        lty = c(NA,1),
+        col = c(NA,"red"),
+        ncol = 2, 
+        bty = "o", box.col = "white", bg = "white",
+        xpd=TRUE)
+  }
+
+  datos_1_average <- rollmean(datos_1[nivel,1:length_visulal], k = 7)
+  datos_2_average <- rollmean(select_datos_2[,1:length_visulal], k = 7)  
+
+  #str(mi_barplot)
+  mi_length <- dim(mi_barplot)[1] - 3
+  #mi_length <- length(datos_1_average)
+  mi_x <- mi_barplot[4:mi_length,1]
+  
+
+  lines(x = mi_x - t_defuncion, y = datos_1_average, col = "red", lwd = 2, lty = 1)
+  lines(x = mi_x, y = datos_2_average, col = "blue", lwd = 2, lty = 1)
+  
+}
+
+ #mi_grafica(nivel = 1, modo = 1,
+ #           datos_1 = incremento_d_m_a100k_Jalisco, 
+#            datos_2 = incremento_m_a100k_Jalisco,
+#            metadatos_1 = metadatos_m_J)
+
+mi_grafica(nivel = 1, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k,           
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 2, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k,                      
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 3, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k,           
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 4, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 5, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado,
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 6, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 7, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 8, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 9, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 10, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 11, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 12, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 13, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 14, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 15, 
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           datos_2 = incremento_RJ_m_a100k, 
+           metadatos_1 = metadatos_ordenado_m)
+```
+
+
+```{r fig.width = 8, fig.height = 28}
+par(mfrow = c(15,1), mar = c(1,5,1,1))
+
+mi_grafica(nivel = 1, modo = 3,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 2, modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 3,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 4,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 5,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 6,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 7,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 8,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 9,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 10,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 11,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 12,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 13,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 14,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+
+mi_grafica(nivel = 15,  modo = 2,
+           datos_1 = mi_incremento_d_m_a100k_ordenado, 
+           metadatos_1 = metadatos_ordenado_m)
+```
+
+
