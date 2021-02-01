@@ -1,0 +1,341 @@
+---
+title: "Tratamiento datos COVID-19 México 23/001/2021"
+author: "Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L."
+date: "23/001/2021"
+output:
+  html_document: 
+    css: mystyle.css
+---
+
+```{r variables-ajustables, echo = FALSE}
+fecha <- "23 de enero del 2021"
+fecha_formato <- "2021-01-23"
+```
+
+#### Última actualización `r fecha`
+#### Authores: Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L.
+#### Versión 6.1
+#### Datos fuente
+Datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Fuentes auxiliares
+Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> y Catálogo Único de Claves de Áreas Geoestadísticas Estatales, Municipales y Localidades de INEGI <https://www.inegi.org.mx/app/ageeml/>
+
+```{r echo = FALSE}
+knitr::opts_chunk$set(error = TRUE)
+library(zoo)
+library(htmltools)
+library(DT)
+library(MASS)
+library(R0)
+#library(leaflet)
+#library(sp)
+
+## numero de dias al pasado que se consideraran (además del dia de fecha)
+n <- 287 + 28
+## numero de dias en secuencia completa para Rt
+m <- 287 + 28
+## recorte de últimos dias
+omision <- 15
+# limite desde donde iniciar cortes en el tiempo historico
+#limite_cortes <- 175
+limite_cortes <- 270 + 20
+## tiempo al pasado para inicio de estimación para 10 municipios con mas casos en orden de decremento
+m_vector <- c(267,267,235,240,250,200,200,200,180,170)
+
+## Codigo HTML para boton de Creative Commons 
+cc_html <- '<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a>.'
+```
+
+
+```{r subrutinas, echo = FALSE}
+
+fecha_formato <- as.Date(fecha_formato)
+
+fecha_cadena <- function(mi_f) {
+  ## Como esxtraer partes de fecha
+  ## dia
+  #as.POSIXlt(fecha_formato)$mday
+  ## mes
+  #as.POSIXlt(fecha_formato)$mon + 1
+  ## año
+  #as.POSIXlt(fecha_formato)$year + 1900
+    
+  mi_cadena <- paste0(  
+    sprintf("%02d", as.POSIXlt(mi_f)$year - 100),
+    sprintf("%02d", as.POSIXlt(mi_f)$mon + 1),
+    sprintf("%02d", as.POSIXlt(mi_f)$mday)
+  )
+  return(mi_cadena)
+}
+
+file_by_date <- function (mi_f) {
+  ## funcion regresa nombre del archivo con ruta basandose en su fecha
+  ## prefijo de ruta
+  mi_pr <- "../datos/"
+  ## postfijo de ruta
+  mi_po <- "COVID19MEXICO.csv"
+  mi_file <- paste0(mi_pr, fecha_cadena(mi_f), mi_po)
+  return(mi_file)
+}
+
+R0_segment <- function(epid_data, start_m, mi_i) {
+  segment <- list()
+  mi_R0 <- list()
+  mis_t <- data.frame(t = fecha_formato - seq(0, start_m))
+  mis_casos <- t(epid_data[mi_i,casos_fechas_completo[1:start_m]])  
+  tryCatch({
+    mi_R0 <- est.R0.TD(epid = mis_casos[start_m:1,1], 
+                       n.t0 = mis_casos[start_m,1], 
+                       my_GT, 
+                       t = mis_t[start_m:1,"t"], 
+                       nsim = 1000, 
+                       time.step = 1) 
+  }, error = function(e) {  
+    mi_R0$R <- NA
+    mi_R0$names <- NA
+    mi_R0$day <- NA
+    mi_R0$lower <- NA
+    mi_R0$upper <- NA
+    #Rt_estado <-  c(Rt_estado, 0)
+  }) 
+  segment$R <- mi_R0$R
+  segment$names <- names(mi_R0$R)
+  segment$day <- as.numeric(format(as.Date(names(mi_R0$R)), "%j"))
+  segment$lower <- mi_R0$conf.int$lower
+  segment$upper <- mi_R0$conf.int$upper
+  mi_R0 <- NULL
+  return(segment)
+}
+```
+
+```{r}
+## modelo de distribución de contagios
+#my_GT <- generation.time("gamma", c(4, 2), truncate = 14)
+my_GT <- generation.time("lognormal", c(4, 2), truncate = 14)
+```
+
+
+```{r datos, echo = FALSE}
+## lectura de datos
+datos_estado <- readRDS(paste0("../scripts_tratamiento_nuevo/","object_estado_FS_",fecha_formato,".rds"))
+datos_municipio <- readRDS(paste0("../scripts_tratamiento_nuevo/","object_municipio_FS_",fecha_formato,".rds"))
+#str(datos_estado)
+
+```
+
+```{r echo = TRUE}
+#datos_estado <- datos_estado[datos_estado$CLAVE_ENTIDAD == 14,]
+## seleccionar solo municipios de Jalisco
+datos_municipio <- datos_municipio[datos_municipio$CLAVE_ENTIDAD == 14,]
+datos_municipio <- datos_municipio[datos_municipio$Nom_Mun != "NO ESPECIFICADO",]
+
+#str(datos_municipio)
+```
+
+```{r subtotales, echo = FALSE}
+casos_fechas <- paste0("casos",fecha_cadena(fecha_formato - seq(0, n)))
+neg_fechas <- paste0("neg",fecha_cadena(fecha_formato - seq(0, n)))
+pend_fechas <- paste0("pend",fecha_cadena(fecha_formato - seq(0, n)))
+def_fechas <- paste0("def",fecha_cadena(fecha_formato - seq(0, n)))
+hosp_fechas <- paste0("hosp",fecha_cadena(fecha_formato - seq(0, n)))
+uci_fechas <- paste0("uci",fecha_cadena(fecha_formato - seq(0, n)))
+
+casos_fechas_ok <- casos_fechas[seq(length(casos_fechas)-1,1)]
+
+## sequencia de fechas completa considerada
+casos_fechas_completo <- paste0("casos",fecha_cadena(fecha_formato - omision - seq(0, m)))
+```
+
+```{r}
+metadatos_m <- datos_municipio[,1:12]
+dia_m <- datos_municipio[,c(casos_fechas)]
+dia_antes_m <- cbind(datos_municipio[,c(casos_fechas[-1])],data.frame(inicio = rep(0,dim(datos_municipio)[1])))
+incremento_m <- dia_m - dia_antes_m
+incremento_m_a100k <- round(100000 * incremento_m / datos_municipio$Pob_Municipio, 1)
+```
+
+```{r}
+mi_incremento_m <- as.matrix(incremento_m[,c(casos_fechas_ok)])
+colnames(mi_incremento_m) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+
+mi_incremento_m_a100k <- as.matrix(incremento_m_a100k[,c(casos_fechas_ok)])
+colnames(mi_incremento_m_a100k) <- c(format(fecha_formato - seq(n-1, 0), "%d-%m-%Y"))
+
+municipios_order <- order(dia_m[,casos_fechas[15]], decreasing = TRUE)
+metadatos_ordenado_m <- metadatos_m[municipios_order,]
+mi_incremento_m_ordenado <- mi_incremento_m[municipios_order,]
+incremento_m_ordenado <- incremento_m[municipios_order,]
+mi_incremento_m_a100k_ordenado <- mi_incremento_m_a100k[municipios_order,]
+```
+
+```{r restimacionRt, message = FALSE, warning = FALSE, fig.width = 12, fig.height = 6}
+
+## Calcular incremento diario
+#dia <- datos_municipio[,c(casos_fechas_completo)]
+#dia_antes <- cbind(datos_municipio[,c(casos_fechas_completo[-1])],data.frame(inicio = rep(0,nrow(datos_estado))))
+#incremento <- dia - dia_antes
+incremento <- incremento_m_ordenado
+incremento[incremento < 0] <- 0
+incremento[is.na(incremento)] <- 0
+#incremento
+
+```
+
+# Estimacion Rt para municipios de Jalisco con mayór incidencia
+
+```{r message = FALSE, warning = FALSE, fig.width = 8, fig.height = 20}
+par(mfrow = c(10,1), mar = c(2,6,1,1))
+
+for (i in 1:15) {
+
+  R0_ac <- list()
+
+  #print(metadatos_ordenado_m[i,6])
+  #mi_m <- m_vector[i]
+  
+  ## primera estimación en toda extensión del periodo
+  #R0_result1 <-  R0_segment(incremento,mi_m,i)
+  R0_result1 <-  R0_segment(incremento,limite_cortes,i)
+  R0_ac$R <- R0_result1$R
+  R0_ac$day <- R0_result1$day
+  R0_ac$upper <- R0_result1$upper
+  R0_ac$lower <- R0_result1$lower
+  
+  #print(R0_result1$R)
+  #print(R0_result1$day)
+  #print(R0_result1$names)
+  #print(R0_result1$lower)
+  #print(R0_result1$upper)
+  
+  ## posteriores estimaciones para rellenar los huecos en la linea (cada 5 dias)
+  for (j in seq(from = 10, to = limite_cortes, by = 5)) {
+    R0_result_j <-  R0_segment(incremento,j,i)
+    #print(j)
+    #str(R0_result_j)
+    if (!is.null(R0_result_j$R)) {
+      R0_ac$R <- c(R0_ac$R,R0_result_j$R[3:j])
+      R0_ac$day <- c(R0_ac$day,R0_result_j$day[3:j])
+      R0_ac$upper <- c(R0_ac$upper,R0_result_j$upper[3:j])
+      R0_ac$lower <- c(R0_ac$lower,R0_result_j$lower[3:j])
+      #print(paste0("segmento=",length(R0_result_j$R[3:j])))
+    } else {
+          #R0_ac$R <- NA
+          #R0_ac$names <- NA
+          #R0_ac$day <- NA
+          #R0_ac$lower <- NA
+          #R0_ac$upper <- NA
+      #print("falla")
+    }
+    #print(R0_result_j$R)
+    #print(R0_result_j$day)
+    #print(length(R0_ac$day))
+    #print(length(R0_ac$R))
+    R0_result_j <- NULL
+  }
+  
+  # R0_result2 <-  R0_segment(incremento,50,i)
+  # R0_ac$R <- c(R0_ac$R,R0_result2$R[5:50])
+  # R0_ac$day <- c(R0_ac$day,R0_result2$day[5:50])
+  # R0_ac$upper <- c(R0_ac$upper,R0_result2$upper[5:50])
+  # R0_ac$lower <- c(R0_ac$lower,R0_result2$lower[5:50])
+
+
+  R0_order <- order(R0_ac$day)
+  
+  
+  day_o <- R0_ac$day[R0_order]
+  R0_o <- R0_ac$R[R0_order]
+  data_o <- data.frame(day = day_o, R0 = R0_o)
+  #print(dim(data_o))
+  ## quitar los registros duplicados
+  data_ou <- data_o[!duplicated(data_o$day),]
+  #print(dim(data_ou))
+  data_ou_length <- length(data_ou$R0) - 3
+
+  nombres_eje_sequence <- seq(from = 0, to = 365)
+  nombres_eje_dates <- as.Date(nombres_eje_sequence, origin = "2020-01-01")
+  nombres_eje <- c(format(nombres_eje_dates, "%b"))
+  nombres_eje_dias <- c(format(nombres_eje_dates, "%d"))
+
+  label.index <- which(as.numeric(nombres_eje_dias) == 15) 
+  minor.index <- which(as.numeric(nombres_eje_dias) == 1) 
+
+  plot(x = R0_ac$day,
+       y = R0_ac$R,
+       type = "p",
+       col = "darkgray",
+       pch = 19,
+       cex = 0.8,
+       #lwd = 2,
+       xlim = c(60,355),
+       ylim = c(0, 3),
+       ylab = "Rt",
+       xlab = "",
+       xaxt='n',
+       #main = paste0("Rt en ",metadatos_ordenado_m[i,6])
+       )
+  
+  abline(h = 1, lty = 3, col = "gray")
+  ## areas sombreadas
+  abline(v = as.numeric(format(as.Date("2020-03-30"), "%j")), col = "blue", lty = 2)
+  abline(v = as.numeric(format(as.Date("2020-04-30"), "%j")), col = "blue", lty = 2)     
+  polygon(x = c(as.numeric(format(as.Date("2020-03-30"), "%j")),
+                as.numeric(format(as.Date("2020-03-30"), "%j")),
+                as.numeric(format(as.Date("2020-04-30"), "%j")),
+                as.numeric(format(as.Date("2020-04-30"), "%j"))),
+           y = c(0,30,30,0),
+           col = "blue", border = NA, density = 10, angle = 45)
+  abline(v = as.numeric(format(as.Date("2020-10-30"), "%j")), col = "blue", lty = 2)
+  abline(v = as.numeric(format(as.Date("2020-11-13"), "%j")), col = "blue", lty = 2)
+  polygon(x = c(as.numeric(format(as.Date("2020-10-30"), "%j")),
+                as.numeric(format(as.Date("2020-10-30"), "%j")),
+                as.numeric(format(as.Date("2020-11-13"), "%j")),
+                as.numeric(format(as.Date("2020-11-13"), "%j"))),
+          y = c(0,30,30,0),
+          col = "blue", border = NA, density = 10, angle = 45)
+  abline(v = as.numeric(format(as.Date("2020-06-01"), "%j")), col = "black", lty = 2)
+  abline(v = as.numeric(format(as.Date("2020-06-15"), "%j")), col = "black", lty = 2)
+  polygon(x = c(as.numeric(format(as.Date("2020-06-01"), "%j")),
+                as.numeric(format(as.Date("2020-06-01"), "%j")),
+                as.numeric(format(as.Date("2020-06-15"), "%j")),
+                as.numeric(format(as.Date("2020-06-15"), "%j"))),
+          y = c(0,30,30,0),
+          col = "black", border = NA, density = 10, angle = 45)  
+  abline(v = as.numeric(format(as.Date("2020-07-20"), "%j")), col = "black", lty = 2)
+  abline(v = as.numeric(format(as.Date("2020-08-17"), "%j")), col = "black", lty = 2)
+  polygon(x = c(as.numeric(format(as.Date("2020-07-20"), "%j")),
+                as.numeric(format(as.Date("2020-07-20"), "%j")),
+                as.numeric(format(as.Date("2020-08-17"), "%j")),
+                as.numeric(format(as.Date("2020-08-17"), "%j"))),
+          y = c(0,30,30,0),
+          col = "black", border = NA, density = 10, angle = 45) 
+  
+  
+  lines(x = R0_ac$day[R0_order],
+        y = R0_ac$upper[R0_order],
+        lty = 2, col = "darkgray")
+  lines(x = R0_ac$day[R0_order],
+        y = R0_ac$lower[R0_order],
+        lty = 2, col = "darkgray")
+  
+  lines(y = rollmean(data_ou$R0, k = 7), 
+        x = data_ou[4:data_ou_length,"day"],
+        lwd = 2, col = "red")
+  
+  # points(x = R0_ac$day[R0_order],
+  #       y = R0_ac$upper[R0_order],
+  #       col = "lightgray")
+  # points(x = R0_ac$day[R0_order],
+  #       y = R0_ac$lower[R0_order],
+  #       col = "lightgray")  
+  
+  legend(x = 50, y = 2.8, metadatos_ordenado_m[i,6], cex = 1.5, box.col = "white", bg = "white", adj = 0)
+  axis(side = 1, at = nombres_eje_sequence[minor.index], labels = FALSE, tcl = -0.5)
+  axis(side = 1, at = nombres_eje_sequence[label.index], labels = nombres_eje[label.index], tcl = -0.5, col.ticks = "white")  
+  
+  R0_ac <- NULL
+}
+
+```
+

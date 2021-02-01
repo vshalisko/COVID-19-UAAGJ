@@ -1,0 +1,255 @@
+---
+title: "Tratamiento datos COVID-19 México 23/01/2021"
+author: "Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L."
+date: "23/01/2021"
+output:
+  html_document: 
+    css: mystyle.css
+---
+
+```{r variables-ajustables, echo = FALSE}
+fecha <- "23 de enero del 2021"
+fecha_formato <- "2021-01-23"
+
+
+fecha_inicio <- "2020-02-29"
+```
+
+#### Última actualización `r fecha`
+#### Authores: Shalisko V., Castillo-Aja R., Santana E., Valdivia-Ornelas L.
+#### Versión 6.1
+#### Datos fuente
+Datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+#### Fuentes auxiliares
+Diccionarios de datos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127> y Catálogo Único de Claves de Áreas Geoestadísticas Estatales, Municipales y Localidades de INEGI <https://www.inegi.org.mx/app/ageeml/>
+
+```{r echo = FALSE}
+knitr::opts_chunk$set(error = TRUE)
+library(zoo)
+library(htmltools)
+library(DT)
+library(MASS)
+library(R0)
+library(rgdal)
+library(sp)
+library(RColorBrewer)
+
+
+## numero de dias al pasado que se consideraran (además del dia de fecha)
+n <- 331
+omision <- 10
+
+## Codigo HTML para boton de Creative Commons 
+cc_html <- '<a rel="license" href="http://creativecommons.org/licenses/by-sa/4.0/"><img alt="Creative Commons License" style="border-width:0" src="https://i.creativecommons.org/l/by-sa/4.0/88x31.png" /></a>.'
+```
+
+
+```{r subrutinas, echo = FALSE}
+
+fecha_formato <- as.Date(fecha_formato)
+
+fecha_cadena <- function(mi_f) {
+  ## Como esxtraer partes de fecha
+  ## dia
+  #as.POSIXlt(fecha_formato)$mday
+  ## mes
+  #as.POSIXlt(fecha_formato)$mon + 1
+  ## año
+  #as.POSIXlt(fecha_formato)$year + 1900
+    
+  mi_cadena <- paste0(  
+    sprintf("%02d", as.POSIXlt(mi_f)$year - 100),
+    sprintf("%02d", as.POSIXlt(mi_f)$mon + 1),
+    sprintf("%02d", as.POSIXlt(mi_f)$mday)
+  )
+  return(mi_cadena)
+}
+
+file_by_date <- function (mi_f) {
+  ## funcion regresa nombre del archivo con ruta basandose en su fecha
+  ## prefijo de ruta
+  mi_pr <- "../datos/"
+  ## postfijo de ruta
+  mi_po <- "COVID19MEXICO.csv"
+  mi_file <- paste0(mi_pr, fecha_cadena(mi_f), mi_po)
+  return(mi_file)
+}
+
+```
+
+```{r subtotales, echo = FALSE}
+casos_fechas <- paste0("casos",fecha_cadena(fecha_formato - seq(0, n)))
+neg_fechas <- paste0("neg",fecha_cadena(fecha_formato - seq(0, n)))
+pend_fechas <- paste0("pend",fecha_cadena(fecha_formato - seq(0, n)))
+def_fechas <- paste0("def",fecha_cadena(fecha_formato - seq(0, n)))
+hosp_fechas <- paste0("hosp",fecha_cadena(fecha_formato - seq(0, n)))
+uci_fechas <- paste0("uci",fecha_cadena(fecha_formato - seq(0, n)))
+
+casos_fechas_ok <- casos_fechas[seq(length(casos_fechas)-1,1)]
+```
+
+# ANALISIS MÉXICO
+## Casos positivos de COVID-19 por fecha de inicio de síntomas
+
+```{r datos, echo = FALSE}
+## lectura de datos
+datos_estado <- readRDS(paste0("../scripts_tratamiento_nuevo/","object_estado_FS_",fecha_formato,".rds"))
+datos_municipio <- readRDS(paste0("../scripts_tratamiento_nuevo/","object_municipio_FS_",fecha_formato,".rds"))
+#str(datos_estado)
+
+```
+
+
+```{r}
+ruta_estados <- '../datos_shp/Estados.shp'
+estados <- rgdal::readOGR(ruta_estados)
+ruta_municipios <- '../datos_shp/Municipios.shp'
+municipios <- rgdal::readOGR(ruta_municipios)
+
+municipios@data$Clave_Mun_Ent_Texto <- as.numeric(as.character(municipios@data$CVE_MUN)) + 
+                             1000 * as.numeric(as.character(municipios@data$CVE_ENT))
+municipios@data$Clave_Mun_Ent_Texto <- sprintf("%05d", municipios@data$Clave_Mun_Ent_Texto)
+#str(municipios@data)
+```
+
+```{r}
+metadatos_m <- datos_municipio[,1:12]
+#str(metadatos_m)
+dia_m <- datos_municipio[,c(casos_fechas)]
+dia_antes_m <- cbind(datos_municipio[,c(casos_fechas[-1])],data.frame(inicio = rep(0,dim(datos_municipio)[1])))
+incremento_m <- dia_m - dia_antes_m
+incremento_m_a100k <- round(100000 * incremento_m / datos_municipio$Pob_Municipio, 2)
+incremento_m[is.na(incremento_m)] <- 0 
+incremento_m_a100k[is.na(incremento_m_a100k)] <- 0
+
+#dim(incremento_m_a100k)
+#head(incremento_m_a100k)
+```
+
+
+```{r fig.width = 10, fig.height = 8}
+#print(casos_fechas)
+#print(casos_fechas_ok)
+
+semanas_lag <- c(seq(from = 0, to = n, by = 7))
+casos_breaks <- c(0,2.5,5,7.5,10,15,20,30,40,1000000)
+casos_breaks_labels <- c("0-2.5","2.5-5","5-7.5","7.5-10","10-15","15-20","20-30","30-40",">40")
+casos_raw_breaks <- c(0,5,10,20,50,100,200,500,1000,1000000)
+casos_raw_breaks_labels <- c("1-5","6-10","11-20","21-50","51-100","101-200","201-500","501-1000",">1000")
+casos_indice_breaks <- c(-1,-0.75,-0.5,-0.25,-0.1,0.1,0.25,0.5,0.75,1)
+casos_indice_breaks_labels <- c("menos que esperado (-1)","-0.75","-0.5","-0.25","esperado (0)","0.25","0.5","0.75","mas que esperado (1)")
+
+
+#for (i in 1:3) {
+for (i in 1:46) {
+  selection_cols <- paste0("casos",fecha_cadena(as.Date(fecha_inicio) + seq(semanas_lag[i]+1, semanas_lag[i]+8)))  
+  #print(selection_cols)
+  suma_casos_semanal <- apply(incremento_m[,selection_cols], 1, sum)
+  total_casos_semanal <- sum(suma_casos_semanal, na.rm = TRUE)
+  total_poblacion <- sum(datos_municipio$Pob_Municipio, na.rm = TRUE)
+  casos_esperados_semanal <- total_casos_semanal * datos_municipio$Pob_Municipio / total_poblacion
+  ## indice (similar a NDVI)
+  casos_indice_semanal <- (suma_casos_semanal - casos_esperados_semanal) / (suma_casos_semanal + casos_esperados_semanal)
+
+  suma_a100k_semanal <- apply(incremento_m_a100k[,selection_cols], 1, sum)
+  datos_semanales <- data.frame(
+             Clave_Mun_Ent_Texto = as.character(metadatos_m[,"Clave_Mun_Ent_Texto"]), 
+             Municipio = metadatos_m[,"Nom_Mun"],
+             Latitud = metadatos_m[,"Lat_Decimal"],
+             Longitud = metadatos_m[,"Lon_Decimal"],
+             Casos_100k = suma_a100k_semanal,
+             Casos_raw = suma_casos_semanal,
+             Casos_esperado = casos_esperados_semanal,
+             Casos_indice = casos_indice_semanal
+             )
+  
+  #print(str(datos_semanales))
+  #print(head(datos_semanales, n = 30L))
+  mis_municipios <- municipios
+  mis_municipios <- merge(municipios, datos_semanales, by = "Clave_Mun_Ent_Texto", all.x = TRUE)
+  mis_municipios@data$Class_100k <- as.numeric(cut(mis_municipios@data$Casos_100k, 
+                                                   breaks = casos_breaks))
+  mis_municipios@data$Color_100k <- brewer.pal(n = 9, name = 'YlOrRd')[mis_municipios@data$Class_100k]
+  mis_municipios@data$Class_raw <- as.numeric(cut(mis_municipios@data$Casos_raw, 
+                                                   breaks = casos_raw_breaks))  
+  mis_municipios@data$Color_raw <- brewer.pal(n = 9, name = 'PuRd')[mis_municipios@data$Class_raw]  
+  mis_municipios@data$Class_indice <- as.numeric(cut(mis_municipios@data$Casos_indice, 
+                                                   breaks = casos_indice_breaks))  
+  mis_municipios@data$Color_indice <- brewer.pal(n = 9, name = 'RdYlBu')[10 - mis_municipios@data$Class_indice]  
+  
+  #print(head(mis_municipios@data, n = 25L))
+  #str(mis_municipios@data)
+  
+  #str(mis_municipios)
+  
+  ## grafica casos por 100 mil
+  plot(mis_municipios,
+          col = mis_municipios$Color_100k,
+          axes = TRUE, 
+          border = NA, 
+          #col = "transparent",
+          main = paste0("Casos semanales por 100 mil habitantes ",
+                        as.Date(fecha_inicio) + semanas_lag[i] + 1," - ",
+                         as.Date(fecha_inicio) + semanas_lag[i] + 8))
+  plot(estados, add = TRUE)
+  legend("topright", 
+         c("Número de casos confirmados de COVID-19 con base en los reportes SSA de México"))  
+  
+  legend("bottomleft", 
+         as.character(casos_breaks_labels),
+         fill = brewer.pal(n = 9, name = 'YlOrRd')[1:9],
+         title = "Por 100 mil habitantes"
+         )
+
+  ## grafica casos
+  plot(mis_municipios,
+          col = mis_municipios$Color_raw,
+          axes = TRUE, 
+          border = NA, 
+          #col = "transparent",
+          main = paste0("Casos semanales ",
+                        as.Date(fecha_inicio) + semanas_lag[i] + 1," - ",
+                         as.Date(fecha_inicio) + semanas_lag[i] + 8))
+  plot(estados, add = TRUE)
+  legend("topright", 
+         c("Número de casos confirmados de COVID-19 con base en los reportes SSA de México"))  
+  legend("bottomleft", 
+         as.character(casos_raw_breaks_labels),
+         fill = brewer.pal(n = 9, name = 'PuRd')[1:9],
+         title = "Casos semanales"
+         )
+
+  ## grafica casos indice
+  plot(mis_municipios,
+          col = mis_municipios$Color_indice,
+          axes = TRUE, 
+          border = NA, 
+          #col = "transparent",
+          main = paste0("Índice de desviación del número de casos semanales esperado ",
+                        as.Date(fecha_inicio) + semanas_lag[i] + 1," - ",
+                         as.Date(fecha_inicio) + semanas_lag[i] + 8))
+  plot(estados, add = TRUE)
+  legend("topright", 
+         c("Áreas en blanco reprezentan zonas sin casos registrados en el periodo",
+           "Número de casos confirmados de COVID-19 con base en los reportes SSA de México"))
+  legend("bottomleft", 
+         as.character(casos_indice_breaks_labels),
+         fill = brewer.pal(n = 9, name = 'RdYlBu')[9:1],
+         title = "Indice de casos"
+         )  
+  
+  ## verificationn plot wit coordinates only
+  #plot(x = mis_municipios@data$Longitud,
+  #     y = mis_municipios@data$Latitud,
+  #     col = mis_municipios@data$Color_raw,
+  #     type = "p", pch = 19)
+  
+}
+
+knitr::asis_output(htmltools::htmlPreserve(cc_html))
+
+```
+
+
+
