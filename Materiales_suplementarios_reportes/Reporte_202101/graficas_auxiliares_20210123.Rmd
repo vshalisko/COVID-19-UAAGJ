@@ -1,0 +1,167 @@
+---
+title: "Tratamiento datos COVID-19 México 23/01/2021"
+author: "Viacheslav Shalisko en colaboración con E. Santana, R. Castillo-Aja, L. Valdivia-Ornelas"
+date: "23/01/2021"
+output:
+  html_document: 
+    self_contained: true
+---
+
+#### Versión 5.3
+
+```{r echo = FALSE}
+knitr::opts_chunk$set(error = TRUE)
+#library(leaflet)
+#library(sp)
+```
+
+
+
+### Datos fuente
+datos abiertos SSA <https://www.gob.mx/salud/documentos/datos-abiertos-152127>
+
+```{r echo = FALSE}
+fecha <- "23 de enero del 2021"
+fecha_formato <- "2021-01-23"
+
+datos <- read.csv("../datos/210123COVID19MEXICO.csv")
+
+dim(datos)
+str(datos)
+```
+
+```{r}
+datos$RESULTADO <- 0
+datos[datos$CLASIFICACION_FINAL == 1, "RESULTADO"] <- 1
+datos[datos$CLASIFICACION_FINAL == 2, "RESULTADO"] <- 1
+datos[datos$CLASIFICACION_FINAL == 3, "RESULTADO"] <- 1
+datos[datos$CLASIFICACION_FINAL == 4, "RESULTADO"] <- 3
+datos[datos$CLASIFICACION_FINAL == 5, "RESULTADO"] <- 3
+datos[datos$CLASIFICACION_FINAL == 6, "RESULTADO"] <- 3
+datos[datos$CLASIFICACION_FINAL == 7, "RESULTADO"] <- 2 
+
+datos$SEXO_F <- NA
+datos[datos$SEXO == 1, "SEXO_F"] <- "MUJER"
+datos[datos$SEXO == 2, "SEXO_F"] <- "HOMBRE"
+
+datos$FECHA_INGRESO <- as.Date(datos$FECHA_INGRESO)
+datos$FECHA_SINTOMAS <- as.Date(datos$FECHA_SINTOMAS)
+datos$FECHA_DEF <- as.Date(datos$FECHA_DEF)   # los datos '9999-99-99' se converten en NA
+```
+
+```{r}
+library(EnvStats)
+
+datos_positivos <- datos[datos$RESULTADO == 1,]
+
+datos_positivos$intervalo_deteccion <- as.numeric(datos_positivos$FECHA_INGRESO - datos_positivos$FECHA_SINTOMAS)
+intervalo_deteccion <- datos_positivos[is.numeric(datos_positivos$intervalo_deteccion),"intervalo_deteccion"]
+summary(intervalo_deteccion)
+
+eqgamma(intervalo_deteccion, p = 0.5, method = "bcmle", ci = TRUE, 
+    ci.type = "two-sided", conf.level = 0.95, 
+    normal.approx.transform = "kulkarni.powar", digits = 1)
+
+hist(intervalo_deteccion, xlim = c(0,21), breaks = c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,100),
+     freq = TRUE,
+     main = "Tiempo entre primeros sintomas y reporte en la base de datos",
+     xlab = "dias", ylab = "frecuencia")
+abline(v = mean(intervalo_deteccion), lty = 2)
+
+
+```
+
+
+```{r}
+
+datos_defunciones <- datos_positivos[!is.na(datos_positivos$FECHA_DEF),]
+#datos_defunciones <- datos_positivos[datos_positivos$FECHA_DEF != '9999-99-99',]
+
+datos_defunciones$intervalo_defuncion <- as.numeric(datos_defunciones$FECHA_DEF - datos_defunciones$FECHA_SINTOMAS)
+intervalo_defunciones <- datos_defunciones[is.numeric(datos_defunciones$intervalo_defuncion),"intervalo_defuncion"]
+summary(intervalo_defunciones)
+
+intervalo_defunciones <- intervalo_defunciones[intervalo_defunciones > 0]    # valores negativos son erroneos
+
+eqgamma(intervalo_defunciones, p = 0.5, method = "bcmle", ci = TRUE, 
+    ci.type = "two-sided", conf.level = 0.95, 
+    normal.approx.transform = "kulkarni.powar", digits = 1)
+
+hist(intervalo_defunciones, xlim = c(0,50), breaks = c(0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,1000),
+     freq = TRUE,
+     main = "Tiempo entre primeros sintomas y defunción",
+     xlab = "dias", ylab = "frecuencia")
+abline(v = mean(intervalo_defunciones), lty = 2)
+
+```
+
+```{r fig.width = 10}
+par(mfcol = c(1,2))
+hist(intervalo_deteccion, xlim = c(0,21), breaks = c(0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,100),
+     freq = TRUE,
+     main = c("Tiempo entre primeros sintomas", "y reporte en la base de datos"),
+     xlab = "dias", ylab = "casos", yaxt="n")
+abline(v = mean(intervalo_deteccion), lty = 2)
+myYTicks <- axTicks(2)
+axis(2, at = myYTicks, labels = paste(formatC(myYTicks/1000, format = 'd'), 'k', sep = ''))
+
+hist(intervalo_defunciones, xlim = c(0,50), breaks = c(0,2,4,6,8,10,12,14,16,18,20,22,24,26,28,30,32,34,36,38,40,42,44,46,48,50,1000),
+     freq = TRUE,
+     main = c("Tiempo entre primeros sintomas","y defunción"),
+     xlab = "dias", ylab = "casos")
+abline(v = mean(intervalo_defunciones), lty = 2)
+
+
+```
+
+
+```{r fig.width = 10}
+
+
+
+my_age_breaks <- c(0,20,25,30,35,40,45,50,55,60,65,70,75,80,85,120)
+
+datos_positivos$edad_rangos <- cut(as.numeric(datos_positivos$EDAD),
+                                             breaks = my_age_breaks,
+                                             dig.lab = 2, include.lowest = TRUE)
+datos_defunciones$edad_rangos <- cut(as.numeric(datos_defunciones$EDAD),
+                                             breaks = my_age_breaks,
+                                             dig.lab = 2, include.lowest = TRUE)
+
+t(table(datos_positivos[,c("edad_rangos","SEXO_F")]))
+
+barplot(t(table(datos_positivos[,c("edad_rangos","SEXO_F")])),
+        beside = TRUE, col = c("lightblue","pink"), axisnames = FALSE,
+        xlab = "edad", ylab = "casos positivos detectados",
+        ylim = c(0,100000), yaxt="n",
+        main = c("Histograma de casos positivos de COVID-19 por grupos de edad en datos de SSA",
+                 paste("datos",fecha)),
+        legend.text = TRUE, 
+        args.legend = list(legend = c("HOMBRE","MUJER","HOSPITALIZADOS","FALLECIDOS"), 
+                           border = c("black","black","black","black"),
+                           fill = c("lightblue","pink","black","black"), 
+                           density = c(NA,NA,30,50),
+                           bty = "n")        
+          )
+myYTicks <- axTicks(2)
+axis(2, at = myYTicks, labels = paste(formatC(myYTicks/1000, format = 'd'), 'k', sep = ''))
+axis(1, at = c(0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45) + 0.5, labels = c(my_age_breaks[1:15],">85"))
+
+barplot(t(table(datos_positivos[datos_positivos$TIPO_PACIENTE == 2,
+                                c("edad_rangos","SEXO_F")
+                                  ])),
+        beside = TRUE, axisnames = FALSE, yaxt="n",
+        col = c("black","black"), density = 30, add = TRUE)
+
+barplot(t(table(datos_defunciones[,c("edad_rangos","SEXO_F")])),
+        beside = TRUE, axisnames = FALSE, yaxt="n",
+        col = c("black","black"), density = 50, add = TRUE)
+```
+
+```{r}
+table(datos_positivos[,c("TIPO_PACIENTE")])
+table(datos_positivos[,c("TIPO_PACIENTE","UCI")])
+table(datos_defunciones[,c("TIPO_PACIENTE")])
+table(datos_defunciones[,c("TIPO_PACIENTE","UCI")])
+```
+

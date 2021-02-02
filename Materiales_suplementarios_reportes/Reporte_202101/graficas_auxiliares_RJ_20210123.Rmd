@@ -1,0 +1,80 @@
+---
+title: "Graficas auxiliares Radar Jalisco"
+author: "Viacheslav Shalisko"
+date: "26/1/2021"
+output: html_document
+---
+
+```{r echo = FALSE}
+knitr::opts_chunk$set(error = TRUE)
+```
+
+```{r}
+fecha <- "23 de enero del 2021"
+fecha_formato <- "2021-01-23"
+
+
+fecha_cadena <- function(mi_f) {
+  ## Como esxtraer partes de fecha
+  ## dia
+  #as.POSIXlt(fecha_formato)$mday
+  ## mes
+  #as.POSIXlt(fecha_formato)$mon + 1
+  ## año
+  #as.POSIXlt(fecha_formato)$year + 1900
+    
+  mi_cadena <- paste0(  
+    sprintf("%02d", as.POSIXlt(mi_f)$year - 100),
+    sprintf("%02d", as.POSIXlt(mi_f)$mon + 1),
+    sprintf("%02d", as.POSIXlt(mi_f)$mday)
+  )
+  return(mi_cadena)
+}
+
+datos <- read.csv(paste0("../datos_Jalisco_oficiales/DA_Radar_Casos_20",fecha_cadena(fecha_formato),".csv"))
+
+datos$SEXO_F <- NA
+datos[datos$SEXO == "FEMENINO", "SEXO_F"] <- "MUJER"
+datos[datos$SEXO == "MASCULINO", "SEXO_F"] <- "HOMBRE"
+
+datos_positivos <- datos[datos$RESULTADO_FINAL == "CONFIRMADO",]
+
+```
+
+
+
+```{r fig.width = 10}
+
+
+
+my_age_breaks <- c(0,20,25,30,35,40,45,50,55,60,65,70,75,80,85,120)
+
+datos_positivos$edad_rangos <- cut(as.numeric(datos_positivos$EDAD),
+                                             breaks = my_age_breaks,
+                                             dig.lab = 2, include.lowest = TRUE)
+
+barplot(t(table(datos_positivos[,c("edad_rangos","SEXO_F")])),
+        beside = TRUE, col = c("lightblue","pink"), axisnames = FALSE,
+        xlab = "edad", ylab = "casos positivos detectados",
+        ylim = c(0,15000), #yaxt="n",
+        main = c("Histograma de casos positivos de COVID-19 por grupos de edad en datos Radar Jalisco",
+                 paste("datos",fecha)),
+        legend.text = TRUE, 
+        args.legend = list(legend = c("HOMBRE","MUJER","HOSPITALIZADOS"), 
+                           border = c("black","black","black"),
+                           fill = c("lightblue","pink","black"), 
+                           density = c(NA,NA,30),
+                           bty = "n")        
+          )
+#myYTicks <- axTicks(2)
+#axis(2, at = myYTicks, labels = paste(formatC(myYTicks/1000, format = 'd'), 'k', sep = ''))
+axis(1, at = c(0,3,6,9,12,15,18,21,24,27,30,33,36,39,42,45) + 0.5, labels = c(my_age_breaks[1:15],">85"))
+
+barplot(t(table(datos_positivos[datos_positivos$TIPO_PACIENTE == "HOSPITALIZADO",
+                                c("edad_rangos","SEXO_F")
+                                  ])),
+        beside = TRUE, axisnames = FALSE, yaxt="n",
+        col = c("black","black"), density = 30, add = TRUE)
+
+```
+
